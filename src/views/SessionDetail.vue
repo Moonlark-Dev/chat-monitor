@@ -7,7 +7,6 @@ import type { CachedMessage, SessionInfo, QueueItem } from '../types'
 
 const route = useRoute()
 const router = useRouter()
-const monitor = useMonitorStore()
 
 const sessionId = computed(() => decodeURIComponent(route.params.id as string))
 const sessionDetail = ref<SessionInfo | null>(null)
@@ -24,7 +23,7 @@ const modalTitle = ref('')
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 function goBack() {
-  monitor.clearSavedSession()
+  useMonitorStore().clearSavedSession()
   router.push('/')
 }
 
