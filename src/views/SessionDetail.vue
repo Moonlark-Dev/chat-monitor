@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMonitorStore } from '../stores/monitor'
-import { getSessionMessages, getSessionDetail, getSessionQueue, getSessionToolCalls, getSessionMessageContext } from '../api/client'
-import type { CachedMessage, SessionInfo, QueueItem } from '../types'
+import { getSessionMessages, getSessionDetail, getSessionQueue, getSessionToolCalls, getSessionOpenAIMessages } from '../api/client'
+import type { CachedMessage, SessionInfo, QueueItem, OpenAIMessages } from '../types'
 
 const route = useRoute()
 const router = useRouter()
@@ -19,6 +19,7 @@ const loading = ref(true)
 const showModal = ref(false)
 const modalContent = ref('')
 const modalTitle = ref('')
+const messageListRef = ref<HTMLElement | null>(null)
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -27,11 +28,18 @@ function goBack() {
   router.push('/')
 }
 
+function scrollToBottom() {
+  nextTick(() => {
+    if (messageListRef.value) {
+      messageListRef.value.scrollTop = messageListRef.value.scrollHeight
+    }
+  })
+}
+
 /** 合并所有消息 + 队列事件，按时间排序 */
 const combinedMessages = computed(() => {
   const list: { key: string; type: 'user' | 'self' | 'event' | 'queue'; msg?: CachedMessage; queue?: QueueItem; time: Date }[] = []
 
-  // 已缓存的消息
   for (let i = 0; i < messages.value.length; i++) {
     const m = messages.value[i]
     const isEvent = m.self && (m.content.includes('[事件]') || m.content.startsWith('🔔'))
@@ -49,12 +57,10 @@ const combinedMessages = computed(() => {
     }
   }
 
-  // 消息队列中待处理的事件
   for (let i = 0; i < queueItems.value.length; i++) {
     list.push({ key: `queue-${i}`, type: 'queue', queue: queueItems.value[i], time: new Date() })
   }
 
-  // 按时间排序
   list.sort((a, b) => a.time.getTime() - b.time.getTime())
   return list
 })
@@ -65,17 +71,17 @@ function formatMessage(msg: CachedMessage): string {
 
 async function onClickMessage(msg: CachedMessage, index: number) {
   if (msg.self) {
-    modalTitle.value = `Moonlark 消息 #${index}`
+    modalTitle.value = `Moonlark 消息 #${index} — OpenAI 请求体`
     modalContent.value = '加载中...'
     showModal.value = true
     try {
-      const ctx = await getSessionMessageContext(sessionId.value, index)
-      modalContent.value = ctx
+      const openai: OpenAIMessages = await getSessionOpenAIMessages(sessionId.value)
+      modalContent.value = JSON.stringify(openai.messages ?? openai, null, 2)
     } catch {
       modalContent.value = formatMessage(msg)
     }
   } else {
-    modalTitle.value = `用户消息 #${index} - ${msg.nickname}`
+    modalTitle.value = `用户消息 #${index} — ${msg.nickname}`
     modalContent.value = formatMessage(msg)
     showModal.value = true
   }
@@ -100,6 +106,7 @@ async function loadData() {
     messages.value = msgPage.messages
     queueItems.value = queue
     toolCalls.value = tools
+    scrollToBottom()
   } catch (e) {
     console.error('Failed to load session:', e)
   } finally {
@@ -108,7 +115,6 @@ async function loadData() {
   }
 }
 
-// Skeleton helper
 const skeletonArray = Array.from({ length: 6 }, (_, i) => i)
 
 onMounted(() => {
@@ -150,7 +156,7 @@ onUnmounted(() => {
 
     <!-- Chat area (single column) -->
     <div class="chat-area">
-      <div class="message-list" v-if="!loading">
+      <div class="message-list" ref="messageListRef" v-if="!loading">
         <div
           v-for="item in combinedMessages"
           :key="item.key"
