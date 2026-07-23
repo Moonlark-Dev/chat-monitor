@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted } from 'vue'
 import { getNotes, createNote, updateNote, deleteNote } from '../api/client'
 import { useMonitorStore } from '../stores/monitor'
 import type { Note } from '../types'

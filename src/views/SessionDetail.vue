@@ -94,10 +94,6 @@ function onClickToolCall(tc: string) {
   showModal.value = true
 }
 
-function imgSrc(base64: string): string {
-  return `data:image/png;base64,${base64}`
-}
-
 // Skeleton helper
 const skeletonArray = computed(() => Array.from({ length: 6 }, (_, i) => i))
 </script>

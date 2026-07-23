@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
-import type { MoonlarkStatus, SessionInfo, MoodData, EgoState, BroadcastMessage, DecisionHistoryItem } from '../types'
+import { ref } from 'vue'
+import type { MoonlarkStatus, SessionInfo, MoodData, EgoState, BroadcastMessage, IncrementalUpdate, DecisionHistoryItem } from '../types'
 import { computeHash, getStatus } from '../api/client'
 import { useAuthStore } from './auth'
 
@@ -59,7 +59,7 @@ export const useMonitorStore = defineStore('monitor', () => {
     _pendingSessionRemovals.clear()
   }
 
-  function _handleIncremental(data: BroadcastMessage & { sessions_updated?: SessionInfo[]; sessions_removed?: string[]; new_ego_decisions?: DecisionHistoryItem[]; ego_decision_full?: DecisionHistoryItem[]; ego_updates?: Partial<Pick<EgoState, 'sleep_mode' | 'tiredness' | 'current_activity' | 'mood_retention'>> }) {
+  function _handleIncremental(data: IncrementalUpdate) {
     serverTime.value = data.server_time || ''
 
     // Mood (always included in incremental updates)
