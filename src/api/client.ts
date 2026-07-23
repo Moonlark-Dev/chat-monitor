@@ -4,7 +4,7 @@ import type { SessionInfo, MessagePage, QueueItem, NotesPage, Note, EgoState, Eg
 
 // 使用 Web Crypto API 计算 SHA-256，降级到纯 JS 实现
 async function sha256Subtle(data: Uint8Array): Promise<Uint8Array> {
-  const buf = await crypto.subtle!.digest('SHA-256', data)
+  const buf = await crypto.subtle!.digest('SHA-256', data.buffer)
   return new Uint8Array(buf)
 }
 
