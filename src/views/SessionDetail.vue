@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMonitorStore } from '../stores/monitor'
-import { getSessionMessages, getSessionDetail, getSessionQueue, getSessionToolCalls, getSessionOpenAIMessages } from '../api/client'
+import { getSessionMessages, getSessionDetail, getSessionQueue, getSessionToolCalls, getSessionOpenAIMessages, getSessionMessageContext } from '../api/client'
 import type { CachedMessage, SessionInfo, QueueItem, OpenAIMessages } from '../types'
 
 const route = useRoute()
@@ -82,8 +82,14 @@ async function onClickMessage(msg: CachedMessage, index: number) {
     }
   } else {
     modalTitle.value = `用户消息 #${index} — ${msg.nickname}`
-    modalContent.value = formatMessage(msg)
+    modalContent.value = '加载中...'
     showModal.value = true
+    try {
+      const ctx = await getSessionMessageContext(sessionId.value, index)
+      modalContent.value = ctx
+    } catch {
+      modalContent.value = formatMessage(msg)
+    }
   }
 }
 
