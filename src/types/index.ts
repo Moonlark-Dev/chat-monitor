@@ -25,6 +25,7 @@ export interface CachedMessage {
   self: boolean
   message_id: string
   image_count: number
+  images?: string[]  // base64 encoded images (only when requested)
 }
 
 export interface MessagePage {
@@ -95,14 +96,44 @@ export interface NotesPage {
   notes: Note[]
 }
 
-export interface MoonlarkStatus {
-  type: string
+// ========================================================================
+// WebSocket Message Types
+// ========================================================================
+
+/** 全量快照（首次连接 + 每 30 秒） */
+export interface StatusSnapshot {
+  type: 'status_snapshot'
   server_time: string
   mood: MoodData
   ego: EgoState
   sessions: SessionInfo[]
   ws_connections: number
 }
+
+/** 增量更新（常规推送） */
+export interface IncrementalUpdate {
+  type: 'incremental_update'
+  server_time: string
+  mood?: MoodData
+  sessions_updated?: SessionInfo[]
+  sessions_removed?: string[]
+  new_ego_decisions?: DecisionHistoryItem[]
+  ego_decision_full?: DecisionHistoryItem[]
+  ego_updates?: Partial<Pick<EgoState, 'sleep_mode' | 'tiredness' | 'current_activity' | 'mood_retention'>>
+  ws_connections?: number
+}
+
+/** 心跳（无变化时的轻量推送） */
+export interface Heartbeat {
+  type: 'heartbeat'
+  server_time: string
+}
+
+export type BroadcastMessage = StatusSnapshot | IncrementalUpdate | Heartbeat
+
+// ========================================================================
+// OpenAI Messages
+// ========================================================================
 
 export interface OpenAIMessages {
   messages: OpenAIHistoryMessage[]
@@ -113,4 +144,16 @@ export interface OpenAIHistoryMessage {
   role: string
   content: string | null
   tool_calls: unknown
+}
+
+// ========================================================================
+// Moonlark Status (full REST response)
+// ========================================================================
+
+export interface MoonlarkStatus {
+  server_time: string
+  mood: MoodData
+  ego: EgoState
+  sessions: SessionInfo[]
+  ws_connections: number
 }

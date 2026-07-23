@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { getNotes, createNote, updateNote, deleteNote } from '../api/client'
+import { useMonitorStore } from '../stores/monitor'
 import type { Note } from '../types'
+
+const monitor = useMonitorStore()
 
 const notes = ref<Note[]>([])
 const total = ref(0)
 const loading = ref(true)
-const searchQuery = ref('')
+const searchQuery = ref(monitor.savedNotesSearch || '')
 
 // Edit dialog
 const showEdit = ref(false)

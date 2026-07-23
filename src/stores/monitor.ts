@@ -1,8 +1,16 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import type { MoonlarkStatus, SessionInfo, MoodData, EgoState } from '../types'
+import { ref, watch } from 'vue'
+import type { MoonlarkStatus, SessionInfo, MoodData, EgoState, BroadcastMessage, DecisionHistoryItem } from '../types'
 import { computeHash, getStatus } from '../api/client'
 import { useAuthStore } from './auth'
+
+const STORAGE_KEY_SESSION = 'chat_monitor_selected_session'
+const STORAGE_KEY_NOTES_SEARCH = 'chat_monitor_notes_search'
+
+// 指数退避参数
+const BACKOFF_INITIAL = 1000     // 1 秒
+const BACKOFF_MAX = 30000        // 30 秒
+const BACKOFF_FACTOR = 2
 
 export const useMonitorStore = defineStore('monitor', () => {
   // WebSocket connection
@@ -17,72 +25,185 @@ export const useMonitorStore = defineStore('monitor', () => {
   const ego = ref<EgoState | null>(null)
   const wsConnections = ref(0)
 
+  // Reconnection state
+  let reconnectAttempts = 0
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+
+  // Session to be applied on next full snapshot (for incremental updates)
+  let _pendingSessionUpdates: Map<string, SessionInfo> = new Map()
+  let _pendingSessionRemovals: Set<string> = new Set()
+
+  function _applyPendingChanges() {
+    if (_pendingSessionRemovals.size > 0 || _pendingSessionUpdates.size > 0) {
+      const current = sessions.value
+      const idMap = new Map(current.map(s => [s.id, s]))
+      for (const sid of _pendingSessionRemovals) {
+        idMap.delete(sid)
+      }
+      for (const [sid, update] of _pendingSessionUpdates) {
+        idMap.set(sid, update)
+      }
+      sessions.value = Array.from(idMap.values())
+      _pendingSessionUpdates.clear()
+      _pendingSessionRemovals.clear()
+    }
+  }
+
+  function _handleSnapshot(data: MoonlarkStatus) {
+    serverTime.value = data.server_time || ''
+    mood.value = data.mood || mood.value
+    sessions.value = data.sessions || sessions.value
+    ego.value = data.ego || ego.value
+    wsConnections.value = data.ws_connections || 0
+    _pendingSessionUpdates.clear()
+    _pendingSessionRemovals.clear()
+  }
+
+  function _handleIncremental(data: BroadcastMessage & { sessions_updated?: SessionInfo[]; sessions_removed?: string[]; new_ego_decisions?: DecisionHistoryItem[]; ego_decision_full?: DecisionHistoryItem[]; ego_updates?: Partial<Pick<EgoState, 'sleep_mode' | 'tiredness' | 'current_activity' | 'mood_retention'>> }) {
+    serverTime.value = data.server_time || ''
+
+    // Mood (always included in incremental updates)
+    if (data.mood) {
+      mood.value = data.mood
+    }
+
+    // Session updates - apply immediately
+    if (data.sessions_updated && data.sessions_updated.length > 0) {
+      const current = sessions.value
+      const idMap = new Map(current.map(s => [s.id, s]))
+      for (const s of data.sessions_updated) {
+        idMap.set(s.id, s)
+      }
+      sessions.value = Array.from(idMap.values())
+    }
+
+    // Session removals
+    if (data.sessions_removed && data.sessions_removed.length > 0) {
+      sessions.value = sessions.value.filter(s => !data.sessions_removed!.includes(s.id))
+    }
+
+    // EGO decision updates
+    if (ego.value && data.new_ego_decisions && data.new_ego_decisions.length > 0) {
+      ego.value = {
+        ...ego.value,
+        decision_history: [...ego.value.decision_history, ...data.new_ego_decisions],
+      }
+    }
+    if (ego.value && data.ego_decision_full) {
+      ego.value = {
+        ...ego.value,
+        decision_history: data.ego_decision_full,
+      }
+    }
+
+    // EGO field updates
+    if (ego.value && data.ego_updates) {
+      ego.value = { ...ego.value, ...data.ego_updates }
+    }
+
+    // ws_connections
+    if (data.ws_connections !== undefined) {
+      wsConnections.value = data.ws_connections
+    }
+  }
+
+  // ---- WebSocket ----
+
+  function _scheduleReconnect() {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+    }
+    reconnectAttempts++
+    const delay = Math.min(BACKOFF_INITIAL * Math.pow(BACKOFF_FACTOR, reconnectAttempts - 1), BACKOFF_MAX)
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null
+      connect()
+    }, delay)
+  }
+
   function connect() {
     const auth = useAuthStore()
     if (!auth.isLoggedIn) return
 
-    // 使用 REST API 轮询作为 fallback（当 WebSocket 连不上时）
-    // 先尝试 WebSocket
     const protocol = auth.baseURL.startsWith('https') ? 'wss' : 'ws'
     const wsURL = auth.baseURL.replace(/^https?:\/\//, `${protocol}://`)
 
     const salt = String(Date.now())
     computeHash(auth.accessToken, salt).then(token => {
-      const wsInstance = new WebSocket(`${wsURL}/chat-monitor/ws?token=${token}&salt=${salt}`)
+      // Don't leak token in URL if possible; use ws://host/chat-monitor/ws?token=***&salt=***
+      const url = `${wsURL}/chat-monitor/ws?token=${token}&salt=${salt}`
 
-      wsInstance.onopen = () => {
-        wsConnected.value = true
-        wsError.value = ''
-        ws.value = wsInstance
-      }
+      try {
+        const wsInstance = new WebSocket(url)
 
-      wsInstance.onclose = () => {
-        wsConnected.value = false
-        ws.value = null
-        // 自动重连
-        setTimeout(() => connect(), 3000)
-      }
-
-      wsInstance.onerror = () => {
-        wsError.value = 'WebSocket 连接失败，使用轮询模式'
-        wsConnected.value = false
-        ws.value = null
-        // 降级到轮询
-        startPolling()
-      }
-
-      wsInstance.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data) as MoonlarkStatus
-          if (data.type === 'status_update' || data.type === 'pong') {
-            // pong 消息不做处理
-            if (data.type === 'pong') return
-          }
-          serverTime.value = data.server_time || ''
-          mood.value = data.mood || mood.value
-          sessions.value = data.sessions || sessions.value
-          ego.value = data.ego || ego.value
-          wsConnections.value = data.ws_connections || 0
-        } catch {
-          // ignore parse errors
+        wsInstance.onopen = () => {
+          wsConnected.value = true
+          wsError.value = ''
+          ws.value = wsInstance
+          reconnectAttempts = 0
         }
+
+        wsInstance.onclose = () => {
+          wsConnected.value = false
+          ws.value = null
+          if (auth.isLoggedIn) {
+            _scheduleReconnect()
+          }
+        }
+
+        wsInstance.onerror = () => {
+          wsError.value = 'WebSocket 连接失败，使用轮询模式'
+          wsConnected.value = false
+          ws.value = null
+          if (auth.isLoggedIn) {
+            _scheduleReconnect()
+          }
+          // Also start polling as fallback
+          startPolling()
+        }
+
+        wsInstance.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data) as BroadcastMessage
+            if (data.type === 'status_snapshot') {
+              _handleSnapshot(data as unknown as MoonlarkStatus)
+            } else if (data.type === 'incremental_update') {
+              _handleIncremental(data)
+            } else if (data.type === 'heartbeat') {
+              serverTime.value = data.server_time || ''
+            }
+            // pong received, no action needed (server-side keeps connection alive)
+          } catch {
+            // ignore parse errors
+          }
+        }
+      } catch (e) {
+        wsError.value = `WebSocket 创建失败: ${e}`
+        _scheduleReconnect()
       }
     })
   }
 
   function disconnect() {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
     if (ws.value) {
       ws.value.close()
       ws.value = null
     }
     wsConnected.value = false
     stopPolling()
+    reconnectAttempts = 0
   }
 
-  // Polling fallback
+  // ---- Polling Fallback ----
+
   let pollTimer: ReturnType<typeof setInterval> | null = null
 
   function startPolling() {
+    // Only start polling if WebSocket is down and no active poll timer
     if (pollTimer) return
     pollTimer = setInterval(async () => {
       try {
@@ -105,9 +226,26 @@ export const useMonitorStore = defineStore('monitor', () => {
     }
   }
 
+  // ---- State Persistence ----
+
+  const savedSessionId = ref(localStorage.getItem(STORAGE_KEY_SESSION) || '')
+  const savedNotesSearch = ref(localStorage.getItem(STORAGE_KEY_NOTES_SEARCH) || '')
+
+  function saveSelectedSession(id: string) {
+    savedSessionId.value = id
+    localStorage.setItem(STORAGE_KEY_SESSION, id)
+  }
+
+  function saveNotesSearch(query: string) {
+    savedNotesSearch.value = query
+    localStorage.setItem(STORAGE_KEY_NOTES_SEARCH, query)
+  }
+
   return {
     ws, wsConnected, wsError,
     serverTime, mood, sessions, ego, wsConnections,
+    savedSessionId, savedNotesSearch,
     connect, disconnect,
+    saveSelectedSession, saveNotesSearch,
   }
 })

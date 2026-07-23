@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMonitorStore } from '../stores/monitor'
 import type { SessionInfo } from '../types'
@@ -40,8 +40,19 @@ function lastActivity(iso: string | null): string {
 }
 
 function goToSession(id: string) {
+  monitor.saveSelectedSession(id)
   router.push(`/session/${encodeURIComponent(id)}`)
 }
+
+// 如果保存了上次查看的会话且还在活跃列表中，自动跳转
+onMounted(() => {
+  if (monitor.savedSessionId) {
+    const exists = monitor.sessions.some(s => s.id === monitor.savedSessionId)
+    if (exists) {
+      goToSession(monitor.savedSessionId)
+    }
+  }
+})
 </script>
 
 <template>

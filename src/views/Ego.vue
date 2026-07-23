@@ -243,6 +243,11 @@ onMounted(() => {
   max-height: 500px;
   overflow-y: auto;
 }
+@media (max-width: 768px) {
+  .event-list {
+    max-height: 300px;
+  }
+}
 .event-item {
   display: flex;
   align-items: center;

@@ -127,4 +127,23 @@ function moodEmoji(emotion: string): string {
 .logout-btn {
   font-size: 12px;
 }
+
+@media (max-width: 640px) {
+  .navbar {
+    padding: 0 10px;
+    gap: 4px;
+  }
+  .nav-brand {
+    font-size: 13px;
+    margin-right: 6px;
+  }
+  .nav-link {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+  .nav-right .nav-info:nth-child(2),
+  .nav-right .nav-info:nth-child(3) {
+    display: none;
+  }
+}
 </style>
