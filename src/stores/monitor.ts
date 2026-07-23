@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { MoonlarkStatus, SessionInfo, MoodData, EgoState, BroadcastMessage, IncrementalUpdate, DecisionHistoryItem } from '../types'
+import type { MoonlarkStatus, SessionInfo, MoodData, EgoState, BroadcastMessage, IncrementalUpdate } from '../types'
 import { computeHash, getStatus } from '../api/client'
 import { useAuthStore } from './auth'
 
@@ -29,34 +29,12 @@ export const useMonitorStore = defineStore('monitor', () => {
   let reconnectAttempts = 0
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
-  // Session to be applied on next full snapshot (for incremental updates)
-  let _pendingSessionUpdates: Map<string, SessionInfo> = new Map()
-  let _pendingSessionRemovals: Set<string> = new Set()
-
-  function _applyPendingChanges() {
-    if (_pendingSessionRemovals.size > 0 || _pendingSessionUpdates.size > 0) {
-      const current = sessions.value
-      const idMap = new Map(current.map(s => [s.id, s]))
-      for (const sid of _pendingSessionRemovals) {
-        idMap.delete(sid)
-      }
-      for (const [sid, update] of _pendingSessionUpdates) {
-        idMap.set(sid, update)
-      }
-      sessions.value = Array.from(idMap.values())
-      _pendingSessionUpdates.clear()
-      _pendingSessionRemovals.clear()
-    }
-  }
-
   function _handleSnapshot(data: MoonlarkStatus) {
     serverTime.value = data.server_time || ''
     mood.value = data.mood || mood.value
     sessions.value = data.sessions || sessions.value
     ego.value = data.ego || ego.value
     wsConnections.value = data.ws_connections || 0
-    _pendingSessionUpdates.clear()
-    _pendingSessionRemovals.clear()
   }
 
   function _handleIncremental(data: IncrementalUpdate) {
