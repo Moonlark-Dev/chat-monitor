@@ -139,6 +139,7 @@ export type BroadcastMessage = StatusSnapshot | IncrementalUpdate | Heartbeat
 export interface OpenAIMessages {
   messages: OpenAIHistoryMessage[]
   count: number
+  last_response?: Record<string, unknown> | null
 }
 
 export interface OpenAIHistoryMessage {

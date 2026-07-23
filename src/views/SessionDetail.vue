@@ -71,12 +71,12 @@ function formatMessage(msg: CachedMessage): string {
 
 async function onClickMessage(msg: CachedMessage, index: number) {
   if (msg.self) {
-    modalTitle.value = `Moonlark 消息 #${index} — OpenAI 请求体`
+    modalTitle.value = `Moonlark 消息 #${index} — OpenAI 响应体`
     modalContent.value = '加载中...'
     showModal.value = true
     try {
       const openai: OpenAIMessages = await getSessionOpenAIMessages(sessionId.value)
-      modalContent.value = JSON.stringify(openai.messages ?? openai, null, 2)
+      modalContent.value = JSON.stringify(openai.last_response ?? openai.messages, null, 2)
     } catch {
       modalContent.value = formatMessage(msg)
     }
