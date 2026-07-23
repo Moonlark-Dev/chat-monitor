@@ -14,6 +14,7 @@ const messages = ref<CachedMessage[]>([])
 const queueItems = ref<QueueItem[]>([])
 const toolCalls = ref<string[]>([])
 const openaiMsgs = ref<OpenAIHistoryMessage[]>([])
+const initialLoad = ref(true)
 const loading = ref(true)
 
 const showModal = ref(false)
@@ -24,7 +25,7 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 let openaiPollTimer: ReturnType<typeof setInterval> | null = null
 
 async function loadData() {
-  loading.value = true
+  if (initialLoad.value) loading.value = true
   try {
     const [detail, msgPage, queue, tools] = await Promise.all([
       getSessionDetail(sessionId.value),
@@ -40,6 +41,7 @@ async function loadData() {
     console.error('Failed to load session:', e)
   } finally {
     loading.value = false
+    initialLoad.value = false
   }
 }
 
@@ -69,6 +71,10 @@ onUnmounted(() => {
   if (openaiPollTimer) { clearInterval(openaiPollTimer); openaiPollTimer = null }
 })
 
+function formatMessage(msg: CachedMessage): string {
+  return `[${msg.nickname}](${msg.message_id}): ${msg.content}`
+}
+
 function onClickMessage(msg: CachedMessage, index: number) {
   if (msg.self) {
     const oaiMsgsVal = openaiMsgs.value
@@ -78,12 +84,12 @@ function onClickMessage(msg: CachedMessage, index: number) {
       modalContent.value = JSON.stringify(assistantMsg, null, 2)
     } else {
       modalTitle.value = `Moonlark 消息 #${index}`
-      modalContent.value = msg.content
+      modalContent.value = formatMessage(msg)
     }
     showModal.value = true
   } else {
     modalTitle.value = `用户消息 #${index} - ${msg.nickname}`
-    modalContent.value = msg.content
+    modalContent.value = formatMessage(msg)
     showModal.value = true
   }
 }
