@@ -142,6 +142,11 @@ export async function getSessionToolCalls(id: string): Promise<string[]> {
   return get<string[]>(`/chat-monitor/sessions/${encodeURIComponent(id)}/tool-calls`)
 }
 
+export async function getSessionMessageContext(id: string, msgIndex: number): Promise<string> {
+  const r = await get<{ context: string }>(`/chat-monitor/sessions/${encodeURIComponent(id)}/messages/${msgIndex}/context`)
+  return r.context
+}
+
 export async function getSessionOpenAIMessages(id: string): Promise<OpenAIMessages> {
   return get<OpenAIMessages>(`/chat-monitor/sessions/${encodeURIComponent(id)}/openai-messages`)
 }

@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useMonitorStore } from '../stores/monitor'
-import { getSessionMessages, getSessionDetail, getSessionQueue, getSessionToolCalls } from '../api/client'
+import { getSessionMessages, getSessionDetail, getSessionQueue, getSessionToolCalls, getSessionMessageContext } from '../api/client'
 import type { CachedMessage, SessionInfo, QueueItem } from '../types'
 
 const route = useRoute()
+const router = useRouter()
 const monitor = useMonitorStore()
 
 const sessionId = computed(() => decodeURIComponent(route.params.id as string))
@@ -21,6 +22,11 @@ const modalContent = ref('')
 const modalTitle = ref('')
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
+
+function goBack() {
+  monitor.clearSavedSession()
+  router.push('/')
+}
 
 /** 合并所有消息 + 队列事件，按时间排序 */
 const combinedMessages = computed(() => {
@@ -58,12 +64,22 @@ function formatMessage(msg: CachedMessage): string {
   return `[${msg.nickname}](${msg.message_id}): ${msg.content}`
 }
 
-function onClickMessage(msg: CachedMessage, index: number) {
-  modalTitle.value = msg.self
-    ? `Moonlark 消息 #${index}`
-    : `用户消息 #${index} - ${msg.nickname}`
-  modalContent.value = formatMessage(msg)
-  showModal.value = true
+async function onClickMessage(msg: CachedMessage, index: number) {
+  if (msg.self) {
+    modalTitle.value = `Moonlark 消息 #${index}`
+    modalContent.value = '加载中...'
+    showModal.value = true
+    try {
+      const ctx = await getSessionMessageContext(sessionId.value, index)
+      modalContent.value = ctx
+    } catch {
+      modalContent.value = formatMessage(msg)
+    }
+  } else {
+    modalTitle.value = `用户消息 #${index} - ${msg.nickname}`
+    modalContent.value = formatMessage(msg)
+    showModal.value = true
+  }
 }
 
 function onClickToolCall(tc: string) {
@@ -113,7 +129,7 @@ onUnmounted(() => {
     <!-- Header -->
     <div class="detail-header" v-if="sessionDetail">
       <div class="header-left">
-        <router-link to="/" class="back-link">← 返回</router-link>
+        <a class="back-link" href="#/" @click.prevent="goBack">← 返回</a>
         <h3 class="session-title">{{ sessionDetail.name || sessionId }}</h3>
         <span class="session-badge" :class="sessionDetail.type">
           {{ sessionDetail.type === 'group' ? '群聊' : '私聊' }}

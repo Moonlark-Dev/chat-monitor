@@ -215,6 +215,11 @@ export const useMonitorStore = defineStore('monitor', () => {
     localStorage.setItem(STORAGE_KEY_SESSION, id)
   }
 
+  function clearSavedSession() {
+    savedSessionId.value = ''
+    localStorage.removeItem(STORAGE_KEY_SESSION)
+  }
+
   function saveNotesSearch(query: string) {
     savedNotesSearch.value = query
     localStorage.setItem(STORAGE_KEY_NOTES_SEARCH, query)
@@ -225,6 +230,6 @@ export const useMonitorStore = defineStore('monitor', () => {
     serverTime, mood, sessions, ego, wsConnections,
     savedSessionId, savedNotesSearch,
     connect, disconnect,
-    saveSelectedSession, saveNotesSearch,
+    saveSelectedSession, clearSavedSession, saveNotesSearch,
   }
 })
