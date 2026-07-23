@@ -14,6 +14,7 @@ export interface SessionInfo {
   accumulated_text_length?: number
   last_interest?: number | null
   queue_size?: number
+  last_thought?: string | null
 }
 
 export interface CachedMessage {

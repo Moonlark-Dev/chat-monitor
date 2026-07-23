@@ -22,6 +22,56 @@ const modalTitle = ref('')
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
+/** 合并所有消息 + 队列事件，按时间排序 */
+const combinedMessages = computed(() => {
+  const list: { key: string; type: 'user' | 'self' | 'event' | 'queue'; msg?: CachedMessage; queue?: QueueItem; time: Date }[] = []
+
+  // 已缓存的消息
+  for (let i = 0; i < messages.value.length; i++) {
+    const m = messages.value[i]
+    const isEvent = m.self && (m.content.includes('[事件]') || m.content.startsWith('🔔'))
+    const isTool = m.self && m.content.includes('[Tools]')
+    const isAction = m.self && (m.content.includes('戳了戳') || m.content.includes('rua'))
+
+    if (isEvent || isAction) {
+      list.push({ key: `msg-${i}`, type: 'event', msg: m, time: m.send_time ? new Date(m.send_time) : new Date(0) })
+    } else if (isTool) {
+      list.push({ key: `msg-${i}`, type: 'event', msg: m, time: m.send_time ? new Date(m.send_time) : new Date(0) })
+    } else if (!m.self) {
+      list.push({ key: `msg-${i}`, type: 'user', msg: m, time: m.send_time ? new Date(m.send_time) : new Date(0) })
+    } else {
+      list.push({ key: `msg-${i}`, type: 'self', msg: m, time: m.send_time ? new Date(m.send_time) : new Date(0) })
+    }
+  }
+
+  // 消息队列中待处理的事件
+  for (let i = 0; i < queueItems.value.length; i++) {
+    list.push({ key: `queue-${i}`, type: 'queue', queue: queueItems.value[i], time: new Date() })
+  }
+
+  // 按时间排序
+  list.sort((a, b) => a.time.getTime() - b.time.getTime())
+  return list
+})
+
+function formatMessage(msg: CachedMessage): string {
+  return `[${msg.nickname}](${msg.message_id}): ${msg.content}`
+}
+
+function onClickMessage(msg: CachedMessage, index: number) {
+  modalTitle.value = msg.self
+    ? `Moonlark 消息 #${index}`
+    : `用户消息 #${index} - ${msg.nickname}`
+  modalContent.value = formatMessage(msg)
+  showModal.value = true
+}
+
+function onClickToolCall(tc: string) {
+  modalTitle.value = '工具调用详情'
+  modalContent.value = tc
+  showModal.value = true
+}
+
 async function loadData() {
   if (initialLoad.value) loading.value = true
   try {
@@ -43,6 +93,9 @@ async function loadData() {
   }
 }
 
+// Skeleton helper
+const skeletonArray = Array.from({ length: 6 }, (_, i) => i)
+
 onMounted(() => {
   loadData()
   if (!pollTimer) {
@@ -53,27 +106,6 @@ onMounted(() => {
 onUnmounted(() => {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
 })
-
-function formatMessage(msg: CachedMessage): string {
-  return `[${msg.nickname}](${msg.message_id}): ${msg.content}`
-}
-
-function onClickMessage(msg: CachedMessage, index: number) {
-  modalTitle.value = msg.self
-    ? `Moonlark 消息 #${index}`
-    : `用户消息 #${index} - ${msg.nickname}`
-  modalContent.value = formatMessage(msg)
-  showModal.value = true
-}
-
-function onClickToolCall(tc: string) {
-  modalTitle.value = '工具调用详情'
-  modalContent.value = tc
-  showModal.value = true
-}
-
-// Skeleton helper
-const skeletonArray = computed(() => Array.from({ length: 6 }, (_, i) => i))
 </script>
 
 <template>
@@ -95,124 +127,90 @@ const skeletonArray = computed(() => Array.from({ length: 6 }, (_, i) => i))
         </span>
       </div>
       <div class="header-right">
-        <span class="info-item">📊 {{ sessionDetail.message_count }} 条</span>
-        <span class="info-item">🔧 {{ toolCalls.length }} 次</span>
-        <span class="info-item">📝 {{ sessionDetail.accumulated_text_length }} 字</span>
+        <span class="info-item">💬{{ sessionDetail.message_count }}</span>
+        <span class="info-item">🔧{{ toolCalls.length }}</span>
+        <span class="info-item">📝{{ sessionDetail.accumulated_text_length }}</span>
       </div>
     </div>
 
-    <!-- Status bar -->
-    <div class="status-bar" v-if="sessionDetail">
-      <span class="status-item">
-        兴趣: <strong>{{ sessionDetail.last_interest ?? '--' }}</strong>
-      </span>
-      <span class="status-item">
-        字数: <strong>{{ sessionDetail.accumulated_text_length ?? 0 }}</strong>
-      </span>
-      <span class="status-item">
-        概率: <strong>{{ sessionDetail.accumulated_text_length ? (Math.min(0.95, sessionDetail.accumulated_text_length / 5000) * 100).toFixed(1) + '%' : '0%' }}</strong>
-      </span>
-      <span class="status-item">
-        Queue: <strong>{{ sessionDetail.queue_size ?? 0 }}</strong>
-      </span>
-      <span class="status-item" v-if="monitor.mood">
-        心情: {{ monitor.mood.emotion }}
-      </span>
-    </div>
-
-    <!-- Chat area -->
+    <!-- Chat area (single column) -->
     <div class="chat-area">
-      <div class="chat-column left-column">
-        <div class="column-header">📩 收到的消息</div>
-        <div class="message-list" v-if="!loading">
-          <!-- User messages -->
-          <div
-            v-for="(msg, idx) in messages"
-            :key="'l' + idx"
-            class="msg-wrapper"
-          >
-            <div v-if="!msg.self" class="msg-bubble received" @click="onClickMessage(msg, idx)">
-              <div class="msg-header">
-                <span class="msg-nickname">{{ msg.nickname }}</span>
-                <span class="msg-time">{{ msg.send_time ? new Date(msg.send_time).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '' }}</span>
-              </div>
-              <div class="msg-content">{{ msg.content }}</div>
-              <div v-if="msg.image_count > 0" class="msg-images">
-                <span class="image-badge">📷 ×{{ msg.image_count }}</span>
-              </div>
+      <div class="message-list" v-if="!loading">
+        <div
+          v-for="item in combinedMessages"
+          :key="item.key"
+          class="msg-row"
+          :class="{
+            'msg-row-self': item.type === 'self',
+            'msg-row-event': item.type === 'event' || item.type === 'queue',
+            'msg-row-tool': item.type === 'event' && item.msg?.content?.includes('[Tools]'),
+          }"
+        >
+          <!-- 用户消息 -->
+          <div v-if="item.type === 'user' && item.msg" class="msg-bubble received" @click="onClickMessage(item.msg, messages.indexOf(item.msg))">
+            <div class="msg-header">
+              <span class="msg-nickname">{{ item.msg.nickname }}</span>
+              <span class="msg-time">{{ item.msg.send_time ? new Date(item.msg.send_time).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '' }}</span>
             </div>
-
-            <!-- Event messages -->
-            <div v-if="msg.self && (msg.content.includes('[事件]') || msg.content.startsWith('🔔'))" class="msg-event">
-              <span class="event-icon">🔔</span>
-              <span class="event-text">{{ msg.content }}</span>
-            </div>
-
-            <!-- Tool call records -->
-            <div v-if="msg.self && msg.content.includes('[Tools]')" class="msg-tool-call" @click="onClickToolCall(msg.content)">
-              <span class="tool-icon">🔧</span>
-              <span class="tool-text">{{ msg.content }}</span>
+            <div class="msg-content">{{ item.msg.content }}</div>
+            <div v-if="item.msg.image_count > 0" class="msg-images">
+              <span class="image-badge">📷 ×{{ item.msg.image_count }}</span>
             </div>
           </div>
 
-          <!-- Queue items -->
-          <div v-for="(item, idx) in queueItems" :key="'q' + idx" class="msg-queue-item">
-            <span v-if="item.type === 'message'">⏳ {{ item.nickname }} 的消息等待处理</span>
-            <span v-else>⏳ 事件: {{ item.prompt?.slice(0, 60) }}</span>
+          <!-- Moonlark 消息 -->
+          <div v-if="item.type === 'self' && item.msg" class="msg-bubble sent" @click="onClickMessage(item.msg, messages.indexOf(item.msg))">
+            <div class="msg-header">
+              <span class="msg-nickname">{{ item.msg.nickname }}</span>
+              <span class="msg-time">{{ item.msg.send_time ? new Date(item.msg.send_time).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '' }}</span>
+            </div>
+            <div class="msg-content">{{ item.msg.content }}</div>
+            <div v-if="item.msg.image_count > 0" class="msg-images">
+              <span class="image-badge">📷 ×{{ item.msg.image_count }}</span>
+            </div>
+          </div>
+
+          <!-- 事件/工具调用/动作 -->
+          <div v-if="item.type === 'event' && item.msg" class="msg-bubble event-bubble">
+            <span v-if="item.msg.content.includes('[Tools]')">🔧 </span>
+            <span v-else-if="item.msg.content.includes('戳了戳')">👉 </span>
+            <span v-else-if="item.msg.content.includes('rua')">🫳 </span>
+            <span v-else>🔔 </span>
+            {{ item.msg.content }}
+          </div>
+
+          <!-- 队列中的待处理事件 -->
+          <div v-if="item.type === 'queue' && item.queue" class="msg-bubble queue-bubble">
+            <span v-if="item.queue.type === 'message'">⏳ {{ item.queue.nickname }} 的消息等待处理</span>
+            <span v-else>⏳ 事件: {{ item.queue.prompt?.slice(0, 80) }}</span>
           </div>
         </div>
-        <!-- Skeleton loading -->
-        <div class="skeleton-list" v-else>
-          <div v-for="i in skeletonArray" :key="i" class="skeleton-row" :style="{ width: (60 + Math.random() * 30) + '%' }">
-            <div class="skeleton-line skeleton-shimmer"></div>
-            <div class="skeleton-line skeleton-shimmer" style="width: 80%"></div>
+
+        <!-- 工具调用区域 -->
+        <div class="tool-calls-section" v-if="toolCalls.length > 0">
+          <div class="section-label">🔧 工具调用记录</div>
+          <div v-for="(tc, idx) in toolCalls" :key="'tc' + idx" class="tool-call-item" @click="onClickToolCall(tc)">
+            {{ tc.slice(0, 80) }}{{ tc.length > 80 ? '...' : '' }}
           </div>
+        </div>
+
+        <div v-if="combinedMessages.length === 0 && !loading" class="empty-state">
+          暂无消息
         </div>
       </div>
 
-      <div class="chat-divider"></div>
-
-      <div class="chat-column right-column">
-        <div class="column-header">📤 Moonlark 消息</div>
-        <div class="message-list" v-if="!loading">
-          <div
-            v-for="(msg, idx) in messages"
-            :key="'r' + idx"
-            class="msg-wrapper"
-          >
-            <!-- Sent messages -->
-            <div v-if="msg.self && !msg.content.includes('[Tools]') && !msg.content.includes('[事件]') && !msg.content.startsWith('🔔')" class="msg-bubble sent" @click="onClickMessage(msg, idx)">
-              <div class="msg-header">
-                <span class="msg-nickname">{{ msg.nickname }}</span>
-                <span class="msg-time">{{ msg.send_time ? new Date(msg.send_time).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '' }}</span>
-              </div>
-              <div class="msg-content">{{ msg.content }}</div>
-              <div v-if="msg.image_count > 0" class="msg-images">
-                <span class="image-badge">📷 ×{{ msg.image_count }}</span>
-              </div>
-            </div>
-
-            <!-- Poke / Rua actions -->
-            <div v-if="msg.self && (msg.content.includes('戳了戳') || msg.content.includes('rua'))" class="msg-action">
-              🎯 {{ msg.content }}
-            </div>
-          </div>
-
-          <!-- Tool calls section -->
-          <div class="tool-calls-section" v-if="toolCalls.length > 0">
-            <div class="section-label">🔧 工具调用记录</div>
-            <div v-for="(tc, idx) in toolCalls" :key="'tc' + idx" class="tool-call-item" @click="onClickToolCall(tc)">
-              {{ tc.slice(0, 80) }}{{ tc.length > 80 ? '...' : '' }}
-            </div>
-          </div>
+      <!-- 骨架屏 -->
+      <div class="skeleton-list" v-else>
+        <div v-for="i in skeletonArray" :key="'s' + i" class="skeleton-row" :class="i % 2 === 0 ? '' : 'skeleton-right'">
+          <div class="skeleton-line skeleton-shimmer"></div>
+          <div class="skeleton-line skeleton-shimmer" style="width: 70%"></div>
         </div>
-        <!-- Skeleton loading -->
-        <div class="skeleton-list" v-else>
-          <div v-for="i in skeletonArray" :key="'s' + i" class="skeleton-row" :style="{ width: (50 + Math.random() * 40) + '%', marginLeft: 'auto' }">
-            <div class="skeleton-line skeleton-shimmer"></div>
-            <div class="skeleton-line skeleton-shimmer" style="width: 70%"></div>
-          </div>
-        </div>
+      </div>
+
+      <!-- 最近思考内容 -->
+      <div v-if="sessionDetail?.last_thought" class="thought-bar">
+        <span class="thought-icon">💭</span>
+        <span class="thought-text">{{ sessionDetail.last_thought }}</span>
       </div>
     </div>
 
@@ -286,113 +284,96 @@ const skeletonArray = computed(() => Array.from({ length: 6 }, (_, i) => i))
   color: var(--text-secondary);
   white-space: nowrap;
 }
-/* Mobile: hide header-right on small screens */
 @media (max-width: 640px) {
   .header-right { display: none; }
   .session-title { max-width: 120px; }
 }
 
-.status-bar {
-  display: flex;
-  gap: 16px;
-  padding: 8px 16px;
-  background: var(--bg-secondary);
-  font-size: 12px;
-  color: var(--text-secondary);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-.status-item {
-  white-space: nowrap;
-}
-.status-item strong {
-  color: var(--text-primary);
-}
-
+/* ---- Chat area ---- */
 .chat-area {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-}
-.chat-column {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
-.column-header {
-  padding: 8px 12px;
-  font-size: 12px;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
 .message-list {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
-.chat-divider {
-  width: 1px;
-  background: var(--border);
-  flex-shrink: 0;
+.msg-row {
+  display: flex;
+  justify-content: flex-start;
 }
-/* Mobile: stack columns vertically */
-@media (max-width: 768px) {
-  .chat-area {
-    flex-direction: column;
-  }
-  .chat-divider {
-    width: 100%;
-    height: 1px;
-  }
-  .chat-column {
-    max-height: 45vh;
-  }
+.msg-row-self {
+  justify-content: flex-end;
+}
+.msg-row-event,
+.msg-row-tool {
+  justify-content: center;
 }
 
-.msg-wrapper {
-  margin-bottom: 8px;
-}
+/* Bubble styles */
 .msg-bubble {
+  max-width: 80%;
   padding: 8px 12px;
   border-radius: var(--radius);
-  max-width: 90%;
   cursor: pointer;
   transition: all 0.15s;
+  word-break: break-word;
 }
 .msg-bubble:hover {
   filter: brightness(1.2);
 }
 .msg-bubble.received {
   background: var(--bubble-other);
-  margin-right: auto;
+  border-bottom-left-radius: 4px;
 }
 .msg-bubble.sent {
   background: var(--bubble-self);
-  margin-left: auto;
+  border-bottom-right-radius: 4px;
+}
+.event-bubble {
+  background: rgba(255, 255, 255, 0.04);
+  max-width: 90%;
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-radius: 8px;
+  cursor: default;
+}
+.queue-bubble {
+  background: rgba(255, 200, 0, 0.06);
+  border: 1px solid rgba(255, 200, 0, 0.15);
+  font-size: 12px;
+  color: var(--warning);
+  max-width: 90%;
+  animation: pulse 1.5s infinite;
+  cursor: default;
 }
 .msg-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 4px;
+  gap: 8px;
 }
 .msg-nickname {
   font-size: 11px;
   color: var(--text-secondary);
   font-weight: 600;
+  white-space: nowrap;
 }
 .msg-time {
   font-size: 10px;
   color: var(--text-muted);
+  white-space: nowrap;
 }
 .msg-content {
   font-size: 13px;
   line-height: 1.5;
-  word-break: break-word;
   white-space: pre-wrap;
 }
 .msg-images {
@@ -406,55 +387,9 @@ const skeletonArray = computed(() => Array.from({ length: 6 }, (_, i) => i))
   border-radius: 4px;
 }
 
-.msg-event {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  font-size: 12px;
-  color: var(--text-secondary);
-  background: var(--bubble-event);
-  border-radius: var(--radius);
-  margin: 4px 0;
-}
-.event-icon { font-size: 14px; }
-
-.msg-tool-call {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  font-size: 12px;
-  color: var(--warning);
-  background: #1a1a0a;
-  border-radius: var(--radius);
-  margin: 4px 0;
-  cursor: pointer;
-}
-.tool-icon { font-size: 14px; }
-.tool-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.msg-queue-item {
-  padding: 4px 8px;
-  font-size: 12px;
-  color: var(--warning);
-  animation: pulse 1.5s infinite;
-  margin: 2px 0;
-}
-
-.msg-action {
-  font-size: 12px;
-  color: var(--text-secondary);
-  padding: 4px 8px;
-  text-align: center;
-}
-
+/* Tool calls section */
 .tool-calls-section {
-  margin-top: 16px;
+  margin-top: 12px;
   border-top: 1px solid var(--border);
   padding-top: 8px;
 }
@@ -479,7 +414,39 @@ const skeletonArray = computed(() => Array.from({ length: 6 }, (_, i) => i))
   background: var(--bg-hover);
 }
 
-/* Skeleton loading */
+/* Thought bar */
+.thought-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  max-height: 80px;
+  overflow-y: auto;
+}
+.thought-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.thought-text {
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 40px 0;
+  font-size: 13px;
+}
+
+/* Skeleton */
 .skeleton-list {
   flex: 1;
   padding: 12px;
@@ -487,22 +454,39 @@ const skeletonArray = computed(() => Array.from({ length: 6 }, (_, i) => i))
 .skeleton-row {
   margin-bottom: 16px;
 }
+.skeleton-right {
+  text-align: right;
+}
 .skeleton-line {
   height: 12px;
   border-radius: 4px;
   background: var(--border);
   margin-bottom: 8px;
+  display: inline-block;
 }
 .skeleton-shimmer {
   background: linear-gradient(90deg, var(--border) 25%, var(--bg-hover) 50%, var(--border) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
+.skeleton-right .skeleton-line:first-child {
+  width: 200px;
+}
+.skeleton-right .skeleton-line:last-child {
+  width: 140px;
+}
+.skeleton-row:not(.skeleton-right) .skeleton-line:first-child {
+  width: 180px;
+}
+.skeleton-row:not(.skeleton-right) .skeleton-line:last-child {
+  width: 120px;
+}
 @keyframes shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
 
+/* Modal */
 .modal-body {
   background: var(--bg-primary);
   padding: 12px;
@@ -513,5 +497,10 @@ const skeletonArray = computed(() => Array.from({ length: 6 }, (_, i) => i))
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.5;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 </style>
