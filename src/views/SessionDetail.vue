@@ -2,8 +2,8 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMonitorStore } from '../stores/monitor'
-import { getSessionMessages, getSessionDetail, getSessionQueue, getSessionToolCalls, getSessionOpenAIMessages } from '../api/client'
-import type { CachedMessage, SessionInfo, QueueItem, OpenAIHistoryMessage } from '../types'
+import { getSessionMessages, getSessionDetail, getSessionQueue, getSessionToolCalls } from '../api/client'
+import type { CachedMessage, SessionInfo, QueueItem } from '../types'
 
 const route = useRoute()
 const monitor = useMonitorStore()
@@ -13,7 +13,6 @@ const sessionDetail = ref<SessionInfo | null>(null)
 const messages = ref<CachedMessage[]>([])
 const queueItems = ref<QueueItem[]>([])
 const toolCalls = ref<string[]>([])
-const openaiMsgs = ref<OpenAIHistoryMessage[]>([])
 const initialLoad = ref(true)
 const loading = ref(true)
 
@@ -22,7 +21,6 @@ const modalContent = ref('')
 const modalTitle = ref('')
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
-let openaiPollTimer: ReturnType<typeof setInterval> | null = null
 
 async function loadData() {
   if (initialLoad.value) loading.value = true
@@ -45,30 +43,15 @@ async function loadData() {
   }
 }
 
-/** 单独轮询 OpenAI 上下文（不与其他数据合并，频率较低） */
-async function loadOpenAIMessages() {
-  try {
-    const oaiMsgs = await getSessionOpenAIMessages(sessionId.value)
-    openaiMsgs.value = oaiMsgs.messages
-  } catch { /* ignore */ }
-}
-
 onMounted(() => {
   loadData()
-  loadOpenAIMessages()
   if (!pollTimer) {
-    pollTimer = setInterval(() => {
-      loadData()
-    }, 3000)
-  }
-  if (!openaiPollTimer) {
-    openaiPollTimer = setInterval(loadOpenAIMessages, 5000)
+    pollTimer = setInterval(loadData, 3000)
   }
 })
 
 onUnmounted(() => {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
-  if (openaiPollTimer) { clearInterval(openaiPollTimer); openaiPollTimer = null }
 })
 
 function formatMessage(msg: CachedMessage): string {
@@ -76,22 +59,11 @@ function formatMessage(msg: CachedMessage): string {
 }
 
 function onClickMessage(msg: CachedMessage, index: number) {
-  if (msg.self) {
-    const oaiMsgsVal = openaiMsgs.value
-    const assistantMsg = oaiMsgsVal.find((m: OpenAIHistoryMessage) => m.role === 'assistant')
-    if (assistantMsg) {
-      modalTitle.value = `Moonlark 回复 #${index}`
-      modalContent.value = JSON.stringify(assistantMsg, null, 2)
-    } else {
-      modalTitle.value = `Moonlark 消息 #${index}`
-      modalContent.value = formatMessage(msg)
-    }
-    showModal.value = true
-  } else {
-    modalTitle.value = `用户消息 #${index} - ${msg.nickname}`
-    modalContent.value = formatMessage(msg)
-    showModal.value = true
-  }
+  modalTitle.value = msg.self
+    ? `Moonlark 消息 #${index}`
+    : `用户消息 #${index} - ${msg.nickname}`
+  modalContent.value = formatMessage(msg)
+  showModal.value = true
 }
 
 function onClickToolCall(tc: string) {
