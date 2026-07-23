@@ -158,6 +158,7 @@ export const useMonitorStore = defineStore('monitor', () => {
       } catch (e) {
         wsError.value = `WebSocket 创建失败: ${e}`
         _scheduleReconnect()
+        startPolling()
       }
     })
   }
