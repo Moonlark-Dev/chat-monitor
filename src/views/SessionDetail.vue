@@ -43,11 +43,10 @@ const combinedMessages = computed(() => {
 
   for (let i = 0; i < messages.value.length; i++) {
     const m = messages.value[i]
-    const isEvent = m.self && (m.content.includes('[事件]') || m.content.startsWith('🔔'))
-    const isTool = m.self && m.content.includes('[Tools]')
-    const isAction = m.self && (m.content.includes('戳了戳') || m.content.includes('rua'))
+    // 自身上报且无 message_id 的消息视为事件（rua/戳一戳/定时器/撤回等）
+    const isEvent = m.self && !m.message_id
 
-    if (isEvent || isAction || isTool) {
+    if (isEvent) {
       list.push({ key: `msg-${i}`, type: 'event', msg: m, time: m.send_time ? new Date(m.send_time) : new Date(0) })
     } else if (!m.self) {
       list.push({ key: `msg-${i}`, type: 'user', msg: m, time: m.send_time ? new Date(m.send_time) : new Date(0) })
@@ -223,10 +222,9 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- 事件/工具调用/动作 -->
+          <!-- 事件/工具调用/动作（rua/戳一戳/定时器/撤回等） -->
           <div v-if="item.type === 'event' && item.msg" class="msg-bubble event-bubble">
-            <span v-if="item.msg.content.includes('[Tools]')">🔧 </span>
-            <span v-else-if="item.msg.content.includes('戳了戳')">👉 </span>
+            <span v-if="item.msg.content.includes('戳了戳')">👉 </span>
             <span v-else-if="item.msg.content.includes('rua')">🫳 </span>
             <span v-else>🔔 </span>
             {{ item.msg.content }}
