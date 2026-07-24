@@ -2,6 +2,17 @@
 // API Response Types
 // ========================================================================
 
+export interface ProbabilityDetails {
+  accumulated_length: number
+  base_probability: number
+  ghot_coefficient: number
+  ghot_applied: number
+  favorability_coefficient: number
+  interest_coefficient: number
+  interest_value: number | null
+  final_probability: number
+}
+
 export interface SessionInfo {
   id: string
   type: 'group' | 'private' | 'unknown'
@@ -15,6 +26,8 @@ export interface SessionInfo {
   last_interest?: number | null
   queue_size?: number
   last_thought?: string | null
+  token_bucket?: number | null
+  probability_details?: ProbabilityDetails
 }
 
 export interface CachedMessage {

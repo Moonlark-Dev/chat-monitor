@@ -183,6 +183,12 @@ onUnmounted(() => {
         <span class="info-item">🔧{{ toolCalls.length }}</span>
         <span class="info-item" v-if="openaiMessages?.last_response">📡 有响应体</span>
         <span class="info-item">📝{{ sessionDetail.accumulated_text_length }}</span>
+        <span class="info-item" v-if="sessionDetail.token_bucket !== undefined && sessionDetail.token_bucket !== null">
+          🪣{{ sessionDetail.token_bucket }}/6
+        </span>
+        <span class="info-item" v-if="sessionDetail.probability_details" :title="'基础: ' + (sessionDetail.probability_details.base_probability * 100).toFixed(1) + '% | GHoT: ' + sessionDetail.probability_details.ghot_coefficient.toFixed(2) + ' | 好感: ' + sessionDetail.probability_details.favorability_coefficient.toFixed(2) + ' | 兴趣: ' + (sessionDetail.probability_details.interest_value ?? '--').toString()">
+          🎲{{ (sessionDetail.probability_details.final_probability * 100).toFixed(1) }}%
+        </span>
       </div>
     </div>
 
