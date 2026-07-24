@@ -55,9 +55,10 @@ const combinedMessages = computed(() => {
     }
   }
 
-  // 工具调用按时间插入
+  // 工具调用按时间插入（过滤掉 send_message，这是内部发送消息，非外部工具调用）
   for (let i = 0; i < toolCalls.value.length; i++) {
     const tc = toolCalls.value[i]
+    if (tc.name === 'send_message') continue
     list.push({ key: `tool-${i}`, type: 'tool_call', tool: tc, time: new Date(tc.time) })
   }
 
