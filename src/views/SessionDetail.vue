@@ -209,7 +209,8 @@ onUnmounted(() => {
 
     <!-- Chat area (single column) -->
     <div class="chat-area">
-      <div class="message-list" ref="messageListRef" v-if="!loading" @scroll="checkNearBottom">
+      <template v-if="!loading">
+      <div class="message-list" ref="messageListRef" @scroll="checkNearBottom">
         <div
           v-for="item in combinedMessages"
           :key="item.key"
@@ -275,11 +276,10 @@ onUnmounted(() => {
       </div>
 
       <!-- 浮动跳到底部按钮 -->
-      <Transition name="fade">
-        <button v-if="showScrollButton" class="float-jump-btn" @click="jumpToBottom">
-          ⬇ 跳到最后
-        </button>
-      </Transition>
+      <button v-show="showScrollButton" class="float-jump-btn" @click="jumpToBottom">
+        ⬇ 跳到最后
+      </button>
+      </template>
 
       <!-- 骨架屏 -->
       <div class="skeleton-list" v-else>
