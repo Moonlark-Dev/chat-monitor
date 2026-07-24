@@ -21,6 +21,8 @@ const showModal = ref(false)
 const modalContent = ref('')
 const modalTitle = ref('')
 const messageListRef = ref<HTMLElement | null>(null)
+const showScrollButton = ref(false)
+const SCROLL_THRESHOLD = 100 // px，距离底部在此范围内视为「在底部」
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -29,12 +31,25 @@ function goBack() {
   router.push('/')
 }
 
-function scrollToBottom() {
-  nextTick(() => {
-    if (messageListRef.value) {
-      messageListRef.value.scrollTop = messageListRef.value.scrollHeight
-    }
-  })
+/** 检查是否在底部附近 */
+function checkNearBottom(): boolean {
+  const el = messageListRef.value
+  if (!el) return true
+  const near = el.scrollHeight - el.scrollTop - el.clientHeight < SCROLL_THRESHOLD
+  showScrollButton.value = !near && !initialLoad.value
+  return near
+}
+
+/** 强制滚动到底部 */
+function jumpToBottom() {
+  const el = messageListRef.value
+  if (el) el.scrollTop = el.scrollHeight
+  showScrollButton.value = false
+}
+
+/** 如果在底部则滚动到底部 */
+function scrollToBottomIfNear() {
+  if (checkNearBottom()) jumpToBottom()
 }
 
 /** 合并所有消息 + 工具调用 + 队列事件，按时间排序 */
@@ -137,7 +152,7 @@ async function loadData() {
       const openai = await getSessionOpenAIMessages(sessionId.value)
       openaiMessages.value = openai
     } catch { /* ignore */ }
-    scrollToBottom()
+    scrollToBottomIfNear()
   } catch (e) {
     console.error('Failed to load session:', e)
   } finally {
@@ -194,7 +209,7 @@ onUnmounted(() => {
 
     <!-- Chat area (single column) -->
     <div class="chat-area">
-      <div class="message-list" ref="messageListRef" v-if="!loading">
+      <div class="message-list" ref="messageListRef" v-if="!loading" @scroll="checkNearBottom">
         <div
           v-for="item in combinedMessages"
           :key="item.key"
@@ -258,6 +273,13 @@ onUnmounted(() => {
           暂无消息
         </div>
       </div>
+
+      <!-- 浮动跳到底部按钮 -->
+      <Transition name="fade">
+        <button v-if="showScrollButton" class="float-jump-btn" @click="jumpToBottom">
+          ⬇ 跳到最后
+        </button>
+      </Transition>
 
       <!-- 骨架屏 -->
       <div class="skeleton-list" v-else>
@@ -355,6 +377,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
 }
 .message-list {
   flex: 1;
@@ -523,6 +546,39 @@ onUnmounted(() => {
   color: var(--text-muted);
   padding: 40px 0;
   font-size: 13px;
+}
+
+/* Floating jump-to-bottom button */
+.float-jump-btn {
+  position: absolute;
+  bottom: 60px;
+  right: 16px;
+  z-index: 10;
+  padding: 6px 14px;
+  font-size: 12px;
+  border-radius: 20px;
+  background: var(--bg-card, #2a2a3a);
+  color: var(--text, #eee);
+  border: 1px solid var(--border, #444);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.float-jump-btn:hover {
+  background: var(--accent, #5b9cff);
+  color: #fff;
+  border-color: var(--accent, #5b9cff);
+}
+
+/* Fade transition */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 
 /* Skeleton */
