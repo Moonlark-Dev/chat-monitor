@@ -209,8 +209,7 @@ onUnmounted(() => {
 
     <!-- Chat area (single column) -->
     <div class="chat-area">
-      <template v-if="!loading">
-      <div class="message-list" ref="messageListRef" @scroll="checkNearBottom">
+      <div class="message-list" ref="messageListRef" v-if="!loading" @scroll="checkNearBottom">
         <div
           v-for="item in combinedMessages"
           :key="item.key"
@@ -273,16 +272,15 @@ onUnmounted(() => {
         <div v-if="combinedMessages.length === 0 && !loading" class="empty-state">
           暂无消息
         </div>
+
+        <!-- 浮动跳到底部按钮（在 message-list 内，绝对定位） -->
+        <button v-show="showScrollButton" class="float-jump-btn" @click="jumpToBottom">
+          ⬇ 跳到最后
+        </button>
       </div>
 
-      <!-- 浮动跳到底部按钮 -->
-      <button v-show="showScrollButton" class="float-jump-btn" @click="jumpToBottom">
-        ⬇ 跳到最后
-      </button>
-      </template>
-
       <!-- 骨架屏 -->
-      <div class="skeleton-list" v-else>
+      <div v-else class="skeleton-list">
         <div v-for="i in skeletonArray" :key="'s' + i" class="skeleton-row" :class="i % 2 === 0 ? '' : 'skeleton-right'">
           <div class="skeleton-line skeleton-shimmer"></div>
           <div class="skeleton-line skeleton-shimmer" style="width: 70%"></div>
