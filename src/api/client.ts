@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { useAuthStore } from '../stores/auth'
-import type { SessionInfo, MessagePage, QueueItem, NotesPage, Note, EgoState, EgoEventsPage, MoonlarkStatus, OpenAIMessages } from '../types'
+import type { SessionInfo, MessagePage, QueueItem, NotesPage, Note, EgoState, EgoEventsPage, MoonlarkStatus, OpenAIMessages, ToolCallData } from '../types'
 
 // 使用 Web Crypto API 计算 SHA-256，降级到纯 JS 实现
 async function sha256Subtle(data: Uint8Array): Promise<Uint8Array> {
@@ -138,8 +138,8 @@ export async function getSessionQueue(id: string): Promise<QueueItem[]> {
   return get<QueueItem[]>(`/chat-monitor/sessions/${encodeURIComponent(id)}/queue`)
 }
 
-export async function getSessionToolCalls(id: string): Promise<string[]> {
-  return get<string[]>(`/chat-monitor/sessions/${encodeURIComponent(id)}/tool-calls`)
+export async function getSessionToolCalls(id: string): Promise<ToolCallData[]> {
+  return get<ToolCallData[]>(`/chat-monitor/sessions/${encodeURIComponent(id)}/tool-calls`)
 }
 
 export async function getSessionMessageContext(id: string, msgIndex: number): Promise<string> {

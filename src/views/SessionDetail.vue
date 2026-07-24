@@ -3,7 +3,7 @@ import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMonitorStore } from '../stores/monitor'
 import { getSessionMessages, getSessionDetail, getSessionQueue, getSessionToolCalls, getSessionOpenAIMessages, getSessionMessageContext } from '../api/client'
-import type { CachedMessage, SessionInfo, QueueItem, OpenAIMessages } from '../types'
+import type { CachedMessage, SessionInfo, QueueItem, OpenAIMessages, ToolCallData } from '../types'
 
 const route = useRoute()
 const router = useRouter()
@@ -12,10 +12,11 @@ const sessionId = computed(() => decodeURIComponent(route.params.id as string))
 const sessionDetail = ref<SessionInfo | null>(null)
 const messages = ref<CachedMessage[]>([])
 const queueItems = ref<QueueItem[]>([])
-const toolCalls = ref<string[]>([])
+const toolCalls = ref<ToolCallData[]>([])
 const initialLoad = ref(true)
 const loading = ref(true)
 
+const openaiMessages = ref<OpenAIMessages | null>(null)
 const showModal = ref(false)
 const modalContent = ref('')
 const modalTitle = ref('')
@@ -36,9 +37,9 @@ function scrollToBottom() {
   })
 }
 
-/** 合并所有消息 + 队列事件，按时间排序 */
+/** 合并所有消息 + 工具调用 + 队列事件，按时间排序 */
 const combinedMessages = computed(() => {
-  const list: { key: string; type: 'user' | 'self' | 'event' | 'queue'; msg?: CachedMessage; queue?: QueueItem; time: Date }[] = []
+  const list: { key: string; type: 'user' | 'self' | 'event' | 'queue' | 'tool_call'; msg?: CachedMessage; queue?: QueueItem; tool?: ToolCallData; time: Date }[] = []
 
   for (let i = 0; i < messages.value.length; i++) {
     const m = messages.value[i]
@@ -46,15 +47,19 @@ const combinedMessages = computed(() => {
     const isTool = m.self && m.content.includes('[Tools]')
     const isAction = m.self && (m.content.includes('戳了戳') || m.content.includes('rua'))
 
-    if (isEvent || isAction) {
-      list.push({ key: `msg-${i}`, type: 'event', msg: m, time: m.send_time ? new Date(m.send_time) : new Date(0) })
-    } else if (isTool) {
+    if (isEvent || isAction || isTool) {
       list.push({ key: `msg-${i}`, type: 'event', msg: m, time: m.send_time ? new Date(m.send_time) : new Date(0) })
     } else if (!m.self) {
       list.push({ key: `msg-${i}`, type: 'user', msg: m, time: m.send_time ? new Date(m.send_time) : new Date(0) })
     } else {
       list.push({ key: `msg-${i}`, type: 'self', msg: m, time: m.send_time ? new Date(m.send_time) : new Date(0) })
     }
+  }
+
+  // 工具调用按时间插入
+  for (let i = 0; i < toolCalls.value.length; i++) {
+    const tc = toolCalls.value[i]
+    list.push({ key: `tool-${i}`, type: 'tool_call', tool: tc, time: new Date(tc.time) })
   }
 
   for (let i = 0; i < queueItems.value.length; i++) {
@@ -69,6 +74,18 @@ function formatMessage(msg: CachedMessage): string {
   return `[${msg.nickname}](${msg.message_id}): ${msg.content}`
 }
 
+function toolCallLabel(tc: ToolCallData): string {
+  const paramStr =
+    tc.name === 'web_search' ? (tc.params.keyword as string ?? '') :
+    tc.name === 'browse_webpage' ? (tc.params.url as string ?? '') :
+    tc.name === 'request_wolfram_alpha' ? (tc.params.question as string ?? '') :
+    tc.name === 'generate_sticker' ? (tc.params.description as string ?? '') :
+    tc.name === 'send_message' ? ((tc.params.message as string ?? '').slice(0, 80)) :
+    tc.name === 'generate_image' ? (tc.params.prompt as string ?? '').slice(0, 80) :
+    Object.keys(tc.params).length ? JSON.stringify(tc.params).slice(0, 80) : ''
+  return `${tc.name}${paramStr ? ': ' + paramStr : ''}`
+}
+
 async function onClickMessage(msg: CachedMessage, index: number) {
   if (msg.self) {
     modalTitle.value = `Moonlark 消息 #${index} — OpenAI 响应体`
@@ -76,7 +93,11 @@ async function onClickMessage(msg: CachedMessage, index: number) {
     showModal.value = true
     try {
       const openai: OpenAIMessages = await getSessionOpenAIMessages(sessionId.value)
-      modalContent.value = JSON.stringify(openai.last_response ?? openai.messages, null, 2)
+      if (openai.last_response) {
+        modalContent.value = JSON.stringify(openai.last_response, null, 2)
+      } else {
+        modalContent.value = '暂无 OpenAI 响应体记录\n\n--- 回退: MessageQueue 上下文 ---\n' + JSON.stringify(openai.messages, null, 2)
+      }
     } catch {
       modalContent.value = formatMessage(msg)
     }
@@ -93,9 +114,9 @@ async function onClickMessage(msg: CachedMessage, index: number) {
   }
 }
 
-function onClickToolCall(tc: string) {
-  modalTitle.value = '工具调用详情'
-  modalContent.value = tc
+function onClickToolCall(tc: ToolCallData) {
+  modalTitle.value = `工具调用: ${tc.name}`
+  modalContent.value = `调用 ID: ${tc.call_id}\n函数名: ${tc.name}\n时间: ${tc.time}\n\n--- 参数 ---\n${JSON.stringify(tc.params, null, 2)}\n\n--- 返回值 ---\n${tc.result ?? '(调用进行中或无返回值)'}`
   showModal.value = true
 }
 
@@ -112,6 +133,10 @@ async function loadData() {
     messages.value = msgPage.messages
     queueItems.value = queue
     toolCalls.value = tools
+    try {
+      const openai = await getSessionOpenAIMessages(sessionId.value)
+      openaiMessages.value = openai
+    } catch { /* ignore */ }
     scrollToBottom()
   } catch (e) {
     console.error('Failed to load session:', e)
@@ -156,6 +181,7 @@ onUnmounted(() => {
       <div class="header-right">
         <span class="info-item">💬{{ sessionDetail.message_count }}</span>
         <span class="info-item">🔧{{ toolCalls.length }}</span>
+        <span class="info-item" v-if="openaiMessages?.last_response">📡 有响应体</span>
         <span class="info-item">📝{{ sessionDetail.accumulated_text_length }}</span>
       </div>
     </div>
@@ -168,7 +194,7 @@ onUnmounted(() => {
           :key="item.key"
           class="msg-row"
           :class="{
-            'msg-row-self': item.type === 'self',
+            'msg-row-self': item.type === 'self' || item.type === 'tool_call',
             'msg-row-event': item.type === 'event' || item.type === 'queue',
             'msg-row-tool': item.type === 'event' && item.msg?.content?.includes('[Tools]'),
           }"
@@ -206,18 +232,20 @@ onUnmounted(() => {
             {{ item.msg.content }}
           </div>
 
+          <!-- 工具调用记录（靠右，无气泡框） -->
+          <div v-if="item.type === 'tool_call' && item.tool" class="msg-row-toolcall" @click="onClickToolCall(item.tool)">
+            <div class="toolcall-inner">
+              <span class="toolcall-icon">🔧</span>
+              <span class="toolcall-name">{{ toolCallLabel(item.tool) }}</span>
+              <span class="toolcall-expand-hint">▸</span>
+            </div>
+            <div class="toolcall-time">{{ new Date(item.tool.time).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' }) }}</div>
+          </div>
+
           <!-- 队列中的待处理事件 -->
           <div v-if="item.type === 'queue' && item.queue" class="msg-bubble queue-bubble">
             <span v-if="item.queue.type === 'message'">⏳ {{ item.queue.nickname }} 的消息等待处理</span>
             <span v-else>⏳ 事件: {{ item.queue.prompt?.slice(0, 80) }}</span>
-          </div>
-        </div>
-
-        <!-- 工具调用区域 -->
-        <div class="tool-calls-section" v-if="toolCalls.length > 0">
-          <div class="section-label">🔧 工具调用记录</div>
-          <div v-for="(tc, idx) in toolCalls" :key="'tc' + idx" class="tool-call-item" @click="onClickToolCall(tc)">
-            {{ tc.slice(0, 80) }}{{ tc.length > 80 ? '...' : '' }}
           </div>
         </div>
 
@@ -414,31 +442,50 @@ onUnmounted(() => {
   border-radius: 4px;
 }
 
-/* Tool calls section */
-.tool-calls-section {
-  margin-top: 12px;
-  border-top: 1px solid var(--border);
-  padding-top: 8px;
-}
-.section-label {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-bottom: 6px;
-}
-.tool-call-item {
-  font-size: 11px;
-  color: var(--warning);
-  padding: 4px 8px;
+/* Tool call inline — right-aligned, no bubble */
+.msg-row-toolcall {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   cursor: pointer;
-  border-radius: 4px;
-  margin-bottom: 2px;
+  padding: 2px 0;
+}
+.toolcall-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  background: rgba(255, 200, 0, 0.08);
+  border: 1px solid rgba(255, 200, 0, 0.15);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--warning);
+  transition: background 0.15s;
+  max-width: 80%;
+}
+.msg-row-toolcall:hover .toolcall-inner {
+  background: rgba(255, 200, 0, 0.15);
+}
+.toolcall-icon {
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.toolcall-name {
   font-family: monospace;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.tool-call-item:hover {
-  background: var(--bg-hover);
+.toolcall-expand-hint {
+  font-size: 10px;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+.toolcall-time {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 1px;
+  margin-right: 10px;
 }
 
 /* Thought bar */

@@ -152,6 +152,14 @@ export interface OpenAIHistoryMessage {
 // Moonlark Status (full REST response)
 // ========================================================================
 
+export interface ToolCallData {
+  call_id: string
+  name: string
+  params: Record<string, unknown>
+  result: string | null
+  time: string
+}
+
 export interface MoonlarkStatus {
   server_time: string
   mood: MoodData
