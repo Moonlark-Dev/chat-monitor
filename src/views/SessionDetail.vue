@@ -221,7 +221,10 @@ onUnmounted(() => {
           }"
         >
           <!-- 用户消息 -->
-          <div v-if="item.type === 'user' && item.msg" class="msg-bubble received" @click="onClickMessage(item.msg, messages.indexOf(item.msg))">
+          <div v-if="item.type === 'user' && item.msg" class="msg-bubble received" :class="{
+            'msg-highlight-to-me': item.msg.to_me,
+            'msg-highlight-replied': item.msg.triggered_reply
+          }" @click="onClickMessage(item.msg, messages.indexOf(item.msg))">
             <div class="msg-header">
               <span class="msg-nickname">{{ item.msg.nickname }}</span>
               <span class="msg-time">{{ item.msg.send_time ? new Date(item.msg.send_time).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '' }}</span>
@@ -229,6 +232,10 @@ onUnmounted(() => {
             <div class="msg-content">{{ item.msg.content }}</div>
             <div v-if="item.msg.image_count > 0" class="msg-images">
               <span class="image-badge">📷 ×{{ item.msg.image_count }}</span>
+            </div>
+            <div class="msg-badges">
+              <span v-if="item.msg.to_me" class="badge badge-to-me">📢 to_me</span>
+              <span v-if="item.msg.triggered_reply" class="badge badge-replied">💬 触发回复</span>
             </div>
           </div>
 
@@ -412,10 +419,54 @@ onUnmounted(() => {
 .msg-bubble.received {
   background: var(--bubble-other);
   border-bottom-left-radius: 4px;
+  border-left: 3px solid transparent;
 }
 .msg-bubble.sent {
   background: var(--bubble-self);
   border-bottom-right-radius: 4px;
+}
+
+/* 高亮样式：to_me 消息 */
+.msg-highlight-to-me {
+  border-left-color: #f0ad4e !important;
+  background: linear-gradient(135deg, rgba(240, 173, 78, 0.08), var(--bubble-other) 40%) !important;
+}
+
+/* 高亮样式：触发回复的消息 */
+.msg-highlight-replied {
+  border-left-color: #5bc0de !important;
+}
+
+/* 同时满足 to_me + 触发回复 */
+.msg-highlight-to-me.msg-highlight-replied {
+  border-left: 3px solid;
+  border-image: linear-gradient(to bottom, #f0ad4e, #5bc0de) 1;
+}
+
+/* 消息角标 */
+.msg-badges {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+.badge {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  line-height: 1.5;
+  font-weight: 500;
+}
+.badge-to-me {
+  background: rgba(240, 173, 78, 0.15);
+  color: #f0ad4e;
+  border: 1px solid rgba(240, 173, 78, 0.3);
+}
+.badge-replied {
+  background: rgba(91, 192, 222, 0.15);
+  color: #5bc0de;
+  border: 1px solid rgba(91, 192, 222, 0.3);
 }
 .event-bubble {
   background: rgba(255, 255, 255, 0.04);

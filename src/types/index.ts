@@ -40,6 +40,8 @@ export interface CachedMessage {
   message_id: string
   image_count: number
   images?: string[]  // base64 encoded images (only when requested)
+  to_me?: boolean     // 是否 @ 了 bot
+  triggered_reply?: boolean  // 是否触发了 bot 回复
 }
 
 export interface MessagePage {
