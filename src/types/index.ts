@@ -89,6 +89,45 @@ export interface EgoEventsPage {
   events: EgoEvent[]
 }
 
+export interface PlanItem {
+  period: string
+  content: string
+}
+
+export interface EgoPlanResponse {
+  items: PlanItem[]
+}
+
+export interface SessionEventsResponse {
+  date: string
+  summary: string
+}
+
+export interface DiaryEntry {
+  id: number
+  content: string
+  keywords: string
+  created_at: string | null
+  expire_at: string | null
+}
+
+export interface EgoDiariesResponse {
+  total: number
+  diaries: DiaryEntry[]
+}
+
+export interface BlogEntry {
+  id: number
+  title: string
+  content: string
+  created_at: string | null
+}
+
+export interface EgoBlogsResponse {
+  total: number
+  blogs: BlogEntry[]
+}
+
 export interface Note {
   id: number
   context_id: string

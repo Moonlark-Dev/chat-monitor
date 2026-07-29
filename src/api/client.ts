@@ -176,3 +176,19 @@ export async function getEgoStatus(): Promise<EgoState> {
 export async function getEgoEvents(limit = 100, offset = 0): Promise<EgoEventsPage> {
   return get<EgoEventsPage>('/chat-monitor/ego/events', { limit, offset })
 }
+
+export async function getEgoPlan(): Promise<EgoPlanResponse> {
+  return get<EgoPlanResponse>('/chat-monitor/ego/plan')
+}
+
+export async function getEgoSessionEvents(date = ''): Promise<SessionEventsResponse> {
+  return get<SessionEventsResponse>('/chat-monitor/ego/session-events', date ? { date } : undefined)
+}
+
+export async function getEgoDiaries(limit = 10, offset = 0): Promise<EgoDiariesResponse> {
+  return get<EgoDiariesResponse>('/chat-monitor/ego/diaries', { limit, offset })
+}
+
+export async function getEgoBlogs(limit = 10, offset = 0): Promise<EgoBlogsResponse> {
+  return get<EgoBlogsResponse>('/chat-monitor/ego/blogs', { limit, offset })
+}

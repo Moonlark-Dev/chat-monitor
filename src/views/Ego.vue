@@ -1,34 +1,53 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { getEgoStatus, getEgoEvents } from '../api/client'
-import type { EgoState, EgoEvent } from '../types'
+import { getEgoStatus, getEgoPlan, getEgoSessionEvents, getEgoDiaries, getEgoBlogs, getEgoEvents } from '../api/client'
+import type { EgoState, PlanItem, DiaryEntry, BlogEntry, EgoEvent } from '../types'
 
 const egoStatus = ref<EgoState | null>(null)
+const planItems = ref<PlanItem[]>([])
+const sessionSummary = ref('')
+const diaries = ref<DiaryEntry[]>([])
+const totalDiaries = ref(0)
+const blogs = ref<BlogEntry[]>([])
+const totalBlogs = ref(0)
+
+// Legacy events (will be empty after diary cleanup)
 const events = ref<EgoEvent[]>([])
 const totalEvents = ref(0)
-const eventsLoading = ref(true)
 
+const loading = ref(true)
 const showEventModal = ref(false)
 const modalEventContent = ref('')
 
-async function loadEgoStatus() {
+async function loadAll() {
+  loading.value = true
   try {
-    egoStatus.value = await getEgoStatus()
-  } catch (e) {
-    console.error('Failed to load EGO status:', e)
-  }
-}
+    const [status, plan, sess, diariesRes, blogsRes, eventsRes] = await Promise.allSettled([
+      getEgoStatus(),
+      getEgoPlan(),
+      getEgoSessionEvents(),
+      getEgoDiaries(10),
+      getEgoBlogs(10),
+      getEgoEvents(200),
+    ])
 
-async function loadEvents() {
-  eventsLoading.value = true
-  try {
-    const result = await getEgoEvents(200)
-    events.value = result.events
-    totalEvents.value = result.total
-  } catch (e) {
-    console.error('Failed to load EGO events:', e)
+    if (status.status === 'fulfilled') egoStatus.value = status.value
+    if (plan.status === 'fulfilled') planItems.value = plan.value.items
+    if (sess.status === 'fulfilled') sessionSummary.value = sess.value.summary
+    if (diariesRes.status === 'fulfilled') {
+      diaries.value = diariesRes.value.diaries
+      totalDiaries.value = diariesRes.value.total
+    }
+    if (blogsRes.status === 'fulfilled') {
+      blogs.value = blogsRes.value.blogs
+      totalBlogs.value = blogsRes.value.total
+    }
+    if (eventsRes.status === 'fulfilled') {
+      events.value = eventsRes.value.events
+      totalEvents.value = eventsRes.value.total
+    }
   } finally {
-    eventsLoading.value = false
+    loading.value = false
   }
 }
 
@@ -39,26 +58,20 @@ function formatTime(iso: string | null): string {
   } catch { return iso }
 }
 
-function eventType(content: string): string {
-  if (content.startsWith('[动作]')) return '动作'
-  if (content.startsWith('[思考]')) return '思考'
-  if (content.startsWith('[动作结果]')) return '结果'
-  if (content.startsWith('[QQ中的事件]')) return 'QQ事件'
-  return '其他'
+function formatDate(iso: string | null): string {
+  if (!iso) return '--'
+  try {
+    const d = new Date(iso)
+    const now = new Date()
+    const today = now.toDateString() === d.toDateString()
+    if (today) return `今天 ${d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
+    const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1)
+    if (yesterday.toDateString() === d.toDateString()) return `昨天 ${d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
+    return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  } catch { return iso }
 }
 
-function eventBadge(type: string): string {
-  const colors: Record<string, string> = {
-    '动作': '#e94560',
-    '思考': '#f39c12',
-    '结果': '#2ecc71',
-    'QQ事件': '#3498db',
-    '其他': '#95a5a6',
-  }
-  return colors[type] || '#95a5a6'
-}
-
-function onClickEvent(event: EgoEvent) {
+function onClickEvent(event: { content: string }) {
   modalEventContent.value = event.content
   showEventModal.value = true
 }
@@ -78,24 +91,19 @@ const emotionState = (status: EgoState | null) => {
 }
 
 onMounted(() => {
-  loadEgoStatus()
-  loadEvents()
-})
-
-// Refresh periodically
-onMounted(() => {
-  setInterval(loadEgoStatus, 5000)
+  loadAll()
+  setInterval(loadAll, 10000)
 })
 </script>
 
 <template>
   <div class="ego-page">
-    <!-- EGO Status -->
-    <div class="ego-status card" v-if="egoStatus">
+    <!-- 状态卡片 -->
+    <div class="card ego-status" v-if="egoStatus">
       <h2>🧠 EGO 状态</h2>
       <div class="status-grid">
         <div class="status-item">
-          <span class="label">状态</span>
+          <span class="label">心情</span>
           <span class="value" :style="{ color: emotionState(egoStatus).color }">
             {{ emotionState(egoStatus).text.toUpperCase() }}
           </span>
@@ -118,19 +126,69 @@ onMounted(() => {
           <span class="label">入睡时间</span>
           <span class="value">{{ formatTime(egoStatus.sleep_begin_time) }}</span>
         </div>
-
         <div class="status-item">
-          <span class="label">今日计划</span>
-          <span class="value plan-text">{{ egoStatus.plan || '暂无计划' }}</span>
+          <span class="label">博客冷却</span>
+          <span class="value" v-if="egoStatus.blog_status?.cooldown_remaining">
+            {{ Math.ceil(egoStatus.blog_status.cooldown_remaining / 60) }} 分钟
+          </span>
+          <span class="value" v-else>就绪</span>
         </div>
       </div>
     </div>
 
-    <!-- Events Timeline -->
+    <!-- 今日计划 -->
+    <div class="ego-section" v-if="planItems.length > 0">
+      <h3>📅 今日计划</h3>
+      <div class="plan-items">
+        <div v-for="(item, idx) in planItems" :key="idx" class="plan-item">
+          <span class="plan-period">{{ item.period }}</span>
+          <span class="plan-content">{{ item.content }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 会话事件摘要 -->
+    <div class="ego-section" v-if="sessionSummary && sessionSummary !== '暂无事件记录。'">
+      <h3>💬 会话事件摘要</h3>
+      <div class="summary-text">{{ sessionSummary }}</div>
+    </div>
+
+    <!-- 日记记录 -->
     <div class="ego-section">
-      <h3>📜 事件记录 ({{ totalEvents }})</h3>
-      <div v-if="eventsLoading" class="loading-state">加载中...</div>
-      <div v-else class="event-list">
+      <h3>📓 日记记录 ({{ totalDiaries }})</h3>
+      <div v-if="loading && diaries.length === 0" class="loading-state">加载中...</div>
+      <div v-else-if="diaries.length === 0" class="empty-state">暂无日记记录</div>
+      <div v-else class="diary-list">
+        <div v-for="diary in diaries" :key="diary.id" class="diary-item" @click="onClickEvent(diary)">
+          <div class="diary-header">
+            <span class="diary-time">{{ formatDate(diary.created_at) }}</span>
+            <span class="diary-keywords" v-if="diary.keywords">{{ diary.keywords }}</span>
+          </div>
+          <div class="diary-content">{{ diary.content.slice(0, 200) }}{{ diary.content.length > 200 ? '...' : '' }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 博客记录 -->
+    <div class="ego-section">
+      <h3>📝 博客记录 ({{ totalBlogs }})</h3>
+      <div v-if="loading && blogs.length === 0" class="loading-state">加载中...</div>
+      <div v-else-if="blogs.length === 0" class="empty-state">暂无博客记录</div>
+      <div v-else class="blog-list">
+        <div v-for="blog in blogs" :key="blog.id" class="blog-item" @click="onClickEvent(blog)">
+          <div class="blog-header">
+            <span class="blog-title">{{ blog.title }}</span>
+            <span class="blog-time">{{ formatDate(blog.created_at) }}</span>
+          </div>
+          <div class="blog-content">{{ blog.content.slice(0, 150) }}{{ blog.content.length > 150 ? '...' : '' }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 旧事件记录（过渡期） -->
+    <div class="ego-section" v-if="events.length > 0">
+      <h3>📜 旧事件记录 ({{ totalEvents }})</h3>
+      <div class="event-list">
         <div
           v-for="event in events"
           :key="event.id"
@@ -138,19 +196,15 @@ onMounted(() => {
           @click="onClickEvent(event)"
         >
           <div class="event-time">{{ formatTime(event.created_at) }}</div>
-          <div class="event-type" :style="{ background: eventBadge(eventType(event.content)) + '22', color: eventBadge(eventType(event.content)) }">
-            {{ eventType(event.content) }}
-          </div>
           <div class="event-content">{{ event.content.slice(0, 120) }}{{ event.content.length > 120 ? '...' : '' }}</div>
         </div>
-        <div v-if="events.length === 0" class="empty-state">暂无事件记录</div>
       </div>
     </div>
 
-    <!-- Event Modal -->
+    <!-- 详情 Modal -->
     <div v-if="showEventModal" class="overlay" @click.self="showEventModal = false">
       <div class="modal">
-        <h3>事件详情</h3>
+        <h3>详情</h3>
         <pre class="modal-body">{{ modalEventContent }}</pre>
         <div class="modal-actions">
           <button class="btn btn-secondary btn-sm" @click="showEventModal = false">关闭</button>
@@ -167,8 +221,9 @@ onMounted(() => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
+
 .ego-status {
   padding: 20px;
 }
@@ -178,7 +233,7 @@ onMounted(() => {
 }
 .status-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 12px;
 }
 .status-item {
@@ -193,20 +248,11 @@ onMounted(() => {
   letter-spacing: 0.5px;
 }
 .status-item .value {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
 }
 .status-item .value.sleeping { color: #9b59b6; }
 .status-item .value.awake { color: var(--success); }
-.status-item .value.plan-text {
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 120px;
-  overflow-y: auto;
-}
 
 .ego-section {
   background: var(--bg-secondary);
@@ -219,17 +265,94 @@ onMounted(() => {
   margin-bottom: 12px;
 }
 
+/* 计划 */
+.plan-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.plan-item {
+  display: flex;
+  gap: 12px;
+  padding: 8px;
+  background: var(--bg-primary);
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+.plan-period {
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 60px;
+}
+.plan-content {
+  color: var(--text-secondary);
+}
+
+/* 摘要 */
+.summary-text {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* 日记 */
+.diary-list, .blog-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+.diary-item, .blog-item {
+  padding: 10px;
+  background: var(--bg-primary);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.diary-item:hover, .blog-item:hover {
+  background: var(--bg-hover);
+}
+.diary-header, .blog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.diary-time, .blog-time {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.diary-keywords {
+  font-size: 11px;
+  color: var(--accent);
+  background: var(--accent);
+  background-opacity: 0.1;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.diary-content, .blog-content {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.blog-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* 旧事件 */
 .event-list {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 500px;
+  max-height: 300px;
   overflow-y: auto;
-}
-@media (max-width: 768px) {
-  .event-list {
-    max-height: 300px;
-  }
 }
 .event-item {
   display: flex;
@@ -250,13 +373,6 @@ onMounted(() => {
   min-width: 140px;
   font-size: 11px;
 }
-.event-type {
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
-}
 .event-content {
   flex: 1;
   color: var(--text-secondary);
@@ -264,6 +380,7 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 .loading-state, .empty-state {
   text-align: center;
   color: var(--text-muted);
@@ -281,5 +398,5 @@ onMounted(() => {
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;
-  }
+}
 </style>
