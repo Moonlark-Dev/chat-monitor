@@ -68,8 +68,6 @@ export interface EgoState {
   sleep_mode: boolean
   tiredness: number
   sleep_begin_time: string | null
-  current_activity: string | null
-  activity_start_time: string | null
   mood_retention: number
   mood: {
     emotion: string
@@ -126,7 +124,7 @@ export interface IncrementalUpdate {
   mood?: MoodData
   sessions_updated?: SessionInfo[]
   sessions_removed?: string[]
-  ego_updates?: Partial<Pick<EgoState, 'sleep_mode' | 'tiredness' | 'current_activity' | 'mood_retention'>>
+  ego_updates?: Partial<Pick<EgoState, 'sleep_mode' | 'tiredness' | 'mood_retention'>>
   ws_connections?: number
 }
 

@@ -118,14 +118,7 @@ onMounted(() => {
           <span class="label">入睡时间</span>
           <span class="value">{{ formatTime(egoStatus.sleep_begin_time) }}</span>
         </div>
-        <div class="status-item">
-          <span class="label">当前活动</span>
-          <span class="value">{{ egoStatus.current_activity || '无' }}</span>
-        </div>
-        <div class="status-item" v-if="egoStatus.activity_start_time">
-          <span class="label">活动开始</span>
-          <span class="value">{{ formatTime(egoStatus.activity_start_time) }}</span>
-        </div>
+
         <div class="status-item">
           <span class="label">今日计划</span>
           <span class="value plan-text">{{ egoStatus.plan || '暂无计划' }}</span>
