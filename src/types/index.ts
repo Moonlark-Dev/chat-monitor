@@ -192,6 +192,12 @@ export type BroadcastMessage = StatusSnapshot | IncrementalUpdate | Heartbeat
 // OpenAI Messages
 // ========================================================================
 
+export interface ThoughtResponse {
+  thought?: string | null
+  reasoning_content?: string | null
+  last_response?: Record<string, unknown> | null
+}
+
 export interface OpenAIMessages {
   messages: OpenAIHistoryMessage[]
   count: number

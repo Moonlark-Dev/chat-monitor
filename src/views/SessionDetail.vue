@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMonitorStore } from '../stores/monitor'
-import { getSessionMessages, getSessionDetail, getSessionQueue, getSessionToolCalls, getSessionOpenAIMessages, getSessionMessageContext } from '../api/client'
+import { getSessionMessages, getSessionDetail, getSessionQueue, getSessionToolCalls, getSessionOpenAIMessages, getSessionMessageContext, getMessageThought } from '../api/client'
 import type { CachedMessage, SessionInfo, QueueItem, OpenAIMessages, ToolCallData } from '../types'
 
 const route = useRoute()
@@ -135,6 +135,43 @@ function onClickToolCall(tc: ToolCallData) {
   showModal.value = true
 }
 
+async function onClickTriggeredReply(_msg: CachedMessage, index: number, event: MouseEvent) {
+  event.stopPropagation()
+  modalTitle.value = `💭 触发回复的 Thought (消息 #${index})`
+  modalContent.value = '加载中...'
+  showModal.value = true
+  try {
+    const resp = await getMessageThought(sessionId.value, index)
+    const parts: string[] = []
+    if (resp.thought) {
+      parts.push('=== 结构化 Thought ===')
+      parts.push(resp.thought)
+    }
+    if (resp.reasoning_content) {
+      parts.push('\n=== 原始 Reasoning Content ===')
+      parts.push(resp.reasoning_content)
+    }
+    if (resp.last_response) {
+      // 从 last_response 中提取 reasoning_content（如果有）
+      const choices = (resp.last_response as any)?.choices
+      if (choices && choices.length > 0) {
+        const msgData = choices[0]?.message || choices[0]?.delta || {}
+        if (msgData.reasoning_content && !resp.reasoning_content) {
+          parts.push('\n=== API 响应中的 Reasoning ===')
+          parts.push(msgData.reasoning_content)
+        }
+        if (msgData.content && msgData.content.length > 0) {
+          parts.push('\n=== 回复内容（首段） ===')
+          parts.push(msgData.content.slice(0, 2000))
+        }
+      }
+    }
+    modalContent.value = parts.length > 0 ? parts.join('\n\n') : '暂无 thought / reasoning 记录'
+  } catch (e) {
+    modalContent.value = `获取失败: ${e}`
+  }
+}
+
 async function loadData() {
   if (initialLoad.value) loading.value = true
   try {
@@ -235,7 +272,7 @@ onUnmounted(() => {
             </div>
             <div class="msg-badges">
               <span v-if="item.msg.to_me" class="badge badge-to-me">📢 to_me</span>
-              <span v-if="item.msg.triggered_reply" class="badge badge-replied">💬 触发回复</span>
+              <span v-if="item.msg.triggered_reply" class="badge badge-replied badge-clickable" @click="onClickTriggeredReply(item.msg, messages.indexOf(item.msg), $event)">💬 触发回复</span>
             </div>
           </div>
 
@@ -467,6 +504,14 @@ onUnmounted(() => {
   background: rgba(91, 192, 222, 0.15);
   color: #5bc0de;
   border: 1px solid rgba(91, 192, 222, 0.3);
+}
+.badge-clickable {
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.badge-clickable:hover {
+  background: rgba(91, 192, 222, 0.3);
+  border-color: #5bc0de;
 }
 .event-bubble {
   background: rgba(255, 255, 255, 0.04);
