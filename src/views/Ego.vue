@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { getEgoStatus, getEgoPlan, getEgoSessionEvents, getEgoDiaries, getEgoBlogs } from '../api/client'
-import type { EgoState, PlanItem, DiaryEntry, BlogEntry } from '../types'
+import { getEgoStatus, getEgoPlan, getEgoSessionEventList, getEgoDiaries, getEgoBlogs } from '../api/client'
+import type { EgoState, PlanItem, SessionEventItem, DiaryEntry, BlogEntry } from '../types'
 
 const egoStatus = ref<EgoState | null>(null)
 const planItems = ref<PlanItem[]>([])
-const sessionSummary = ref('')
+const sessionEvents = ref<SessionEventItem[]>([])
+const totalSessionEvents = ref(0)
 const diaries = ref<DiaryEntry[]>([])
 const totalDiaries = ref(0)
 const blogs = ref<BlogEntry[]>([])
@@ -18,17 +19,20 @@ const modalEventContent = ref('')
 async function loadAll() {
   loading.value = true
   try {
-    const [status, plan, sess, diariesRes, blogsRes] = await Promise.allSettled([
+    const [status, plan, sessRes, diariesRes, blogsRes] = await Promise.allSettled([
       getEgoStatus(),
       getEgoPlan(),
-      getEgoSessionEvents(),
+      getEgoSessionEventList(100),
       getEgoDiaries(10),
       getEgoBlogs(10),
     ])
 
     if (status.status === 'fulfilled') egoStatus.value = status.value
     if (plan.status === 'fulfilled') planItems.value = plan.value.items
-    if (sess.status === 'fulfilled') sessionSummary.value = sess.value.summary
+    if (sessRes.status === 'fulfilled') {
+      sessionEvents.value = sessRes.value.events
+      totalSessionEvents.value = sessRes.value.total
+    }
     if (diariesRes.status === 'fulfilled') {
       diaries.value = diariesRes.value.diaries
       totalDiaries.value = diariesRes.value.total
@@ -138,10 +142,16 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 会话事件摘要 -->
-    <div class="ego-section" v-if="sessionSummary && sessionSummary !== '暂无事件记录。'">
-      <h3>💬 会话事件摘要</h3>
-      <div class="summary-text">{{ sessionSummary }}</div>
+    <!-- 群聊事件记录 -->
+    <div class="ego-section" v-if="sessionEvents.length > 0">
+      <h3>💬 群聊事件记录 ({{ totalSessionEvents }})</h3>
+      <div class="sess-event-list">
+        <div v-for="evt in sessionEvents" :key="evt.id" class="sess-event-item" @click="onClickEvent(evt)">
+          <div class="sess-event-time">{{ formatTime(evt.created_at) }}</div>
+          <div class="sess-event-session">{{ evt.session_id.slice(0, 16) }}</div>
+          <div class="sess-event-content">{{ evt.content.slice(0, 200) }}{{ evt.content.length > 200 ? '...' : '' }}</div>
+        </div>
+      </div>
     </div>
 
     <!-- 日记记录 -->
@@ -266,14 +276,45 @@ onMounted(() => {
   color: var(--text-secondary);
 }
 
-/* 摘要 */
-.summary-text {
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--text-secondary);
-  white-space: pre-wrap;
-  max-height: 300px;
+/* 群聊事件 */
+.sess-event-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 400px;
   overflow-y: auto;
+}
+.sess-event-item {
+  display: flex;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.15s;
+}
+.sess-event-item:hover {
+  background: var(--bg-hover);
+}
+.sess-event-time {
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 140px;
+  font-size: 11px;
+}
+.sess-event-session {
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 60px;
+  font-size: 11px;
+}
+.sess-event-content {
+  flex: 1;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 日记 */

@@ -103,6 +103,19 @@ export interface SessionEventsResponse {
   summary: string
 }
 
+export interface SessionEventItem {
+  id: number
+  session_id: string
+  content: string
+  created_at: string | null
+}
+
+export interface SessionEventListResponse {
+  date: string
+  total: number
+  events: SessionEventItem[]
+}
+
 export interface DiaryEntry {
   id: number
   content: string
