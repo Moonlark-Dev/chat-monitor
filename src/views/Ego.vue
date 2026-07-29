@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { getEgoStatus, getEgoPlan, getEgoSessionEvents, getEgoDiaries, getEgoBlogs, getEgoEvents } from '../api/client'
-import type { EgoState, PlanItem, DiaryEntry, BlogEntry, EgoEvent } from '../types'
+import { getEgoStatus, getEgoPlan, getEgoSessionEvents, getEgoDiaries, getEgoBlogs } from '../api/client'
+import type { EgoState, PlanItem, DiaryEntry, BlogEntry } from '../types'
 
 const egoStatus = ref<EgoState | null>(null)
 const planItems = ref<PlanItem[]>([])
@@ -11,10 +11,6 @@ const totalDiaries = ref(0)
 const blogs = ref<BlogEntry[]>([])
 const totalBlogs = ref(0)
 
-// Legacy events (will be empty after diary cleanup)
-const events = ref<EgoEvent[]>([])
-const totalEvents = ref(0)
-
 const loading = ref(true)
 const showEventModal = ref(false)
 const modalEventContent = ref('')
@@ -22,13 +18,12 @@ const modalEventContent = ref('')
 async function loadAll() {
   loading.value = true
   try {
-    const [status, plan, sess, diariesRes, blogsRes, eventsRes] = await Promise.allSettled([
+    const [status, plan, sess, diariesRes, blogsRes] = await Promise.allSettled([
       getEgoStatus(),
       getEgoPlan(),
       getEgoSessionEvents(),
       getEgoDiaries(10),
       getEgoBlogs(10),
-      getEgoEvents(200),
     ])
 
     if (status.status === 'fulfilled') egoStatus.value = status.value
@@ -41,10 +36,6 @@ async function loadAll() {
     if (blogsRes.status === 'fulfilled') {
       blogs.value = blogsRes.value.blogs
       totalBlogs.value = blogsRes.value.total
-    }
-    if (eventsRes.status === 'fulfilled') {
-      events.value = eventsRes.value.events
-      totalEvents.value = eventsRes.value.total
     }
   } finally {
     loading.value = false
@@ -185,21 +176,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 旧事件记录（过渡期） -->
-    <div class="ego-section" v-if="events.length > 0">
-      <h3>📜 旧事件记录 ({{ totalEvents }})</h3>
-      <div class="event-list">
-        <div
-          v-for="event in events"
-          :key="event.id"
-          class="event-item"
-          @click="onClickEvent(event)"
-        >
-          <div class="event-time">{{ formatTime(event.created_at) }}</div>
-          <div class="event-content">{{ event.content.slice(0, 120) }}{{ event.content.length > 120 ? '...' : '' }}</div>
-        </div>
-      </div>
-    </div>
+
 
     <!-- 详情 Modal -->
     <div v-if="showEventModal" class="overlay" @click.self="showEventModal = false">
@@ -346,40 +323,6 @@ onMounted(() => {
 }
 
 /* 旧事件 */
-.event-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  max-height: 300px;
-  overflow-y: auto;
-}
-.event-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-  transition: background 0.15s;
-}
-.event-item:hover {
-  background: var(--bg-hover);
-}
-.event-time {
-  color: var(--text-muted);
-  white-space: nowrap;
-  min-width: 140px;
-  font-size: 11px;
-}
-.event-content {
-  flex: 1;
-  color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .loading-state, .empty-state {
   text-align: center;
   color: var(--text-muted);
