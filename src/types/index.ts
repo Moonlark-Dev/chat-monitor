@@ -42,6 +42,7 @@ export interface CachedMessage {
   images?: string[]  // base64 encoded images (only when requested)
   to_me?: boolean     // 是否 @ 了 bot
   triggered_reply?: boolean  // 是否触发了 bot 回复
+  mq_text?: string | null    // 投递到 MessageQueue 的完整文本
 }
 
 export interface MessagePage {
