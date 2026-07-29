@@ -128,8 +128,8 @@ onMounted(() => {
         </div>
         <div class="status-item">
           <span class="label">博客冷却</span>
-          <span class="value" v-if="egoStatus.blog_status?.cooldown_remaining">
-            {{ Math.ceil(egoStatus.blog_status.cooldown_remaining / 60) }} 分钟
+          <span class="value" v-if="(egoStatus.blog_status as any)?.cooldown_remaining">
+            {{ Math.ceil((egoStatus.blog_status as any).cooldown_remaining / 60) }} 分钟
           </span>
           <span class="value" v-else>就绪</span>
         </div>
