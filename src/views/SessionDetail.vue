@@ -137,36 +137,12 @@ function onClickToolCall(tc: ToolCallData) {
 
 async function onClickTriggeredReply(_msg: CachedMessage, index: number, event: MouseEvent) {
   event.stopPropagation()
-  modalTitle.value = `💭 触发回复的 Thought (消息 #${index})`
+  modalTitle.value = `💭 Thought (消息 #${index})`
   modalContent.value = '加载中...'
   showModal.value = true
   try {
     const resp = await getMessageThought(sessionId.value, index)
-    const parts: string[] = []
-    if (resp.thought) {
-      parts.push('=== 结构化 Thought ===')
-      parts.push(resp.thought)
-    }
-    if (resp.reasoning_content) {
-      parts.push('\n=== 原始 Reasoning Content ===')
-      parts.push(resp.reasoning_content)
-    }
-    if (resp.last_response) {
-      // 从 last_response 中提取 reasoning_content（如果有）
-      const choices = (resp.last_response as any)?.choices
-      if (choices && choices.length > 0) {
-        const msgData = choices[0]?.message || choices[0]?.delta || {}
-        if (msgData.reasoning_content && !resp.reasoning_content) {
-          parts.push('\n=== API 响应中的 Reasoning ===')
-          parts.push(msgData.reasoning_content)
-        }
-        if (msgData.content && msgData.content.length > 0) {
-          parts.push('\n=== 回复内容（首段） ===')
-          parts.push(msgData.content.slice(0, 2000))
-        }
-      }
-    }
-    modalContent.value = parts.length > 0 ? parts.join('\n\n') : '暂无 thought / reasoning 记录'
+    modalContent.value = resp.thought ?? '暂无 thought 记录'
   } catch (e) {
     modalContent.value = `获取失败: ${e}`
   }
