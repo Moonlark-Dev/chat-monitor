@@ -127,29 +127,10 @@ onMounted(() => {
           <span class="value">{{ formatTime(egoStatus.activity_start_time) }}</span>
         </div>
         <div class="status-item">
-          <span class="label">最后决策</span>
-          <span class="value">{{ egoStatus.last_decision_time || '--' }}</span>
+          <span class="label">今日计划</span>
+          <span class="value plan-text">{{ egoStatus.plan || '暂无计划' }}</span>
         </div>
       </div>
-    </div>
-
-    <!-- Decision History -->
-    <div class="ego-section" v-if="egoStatus?.decision_history?.length">
-      <h3>📋 决策记录</h3>
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>时间</th>
-            <th>动作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(dec, idx) in egoStatus.decision_history" :key="idx">
-            <td>{{ formatTime(dec.time) }}</td>
-            <td>{{ dec.action }}</td>
-          </tr>
-        </tbody>
-      </table>
     </div>
 
     <!-- Events Timeline -->
@@ -224,6 +205,15 @@ onMounted(() => {
 }
 .status-item .value.sleeping { color: #9b59b6; }
 .status-item .value.awake { color: var(--success); }
+.status-item .value.plan-text {
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 120px;
+  overflow-y: auto;
+}
 
 .ego-section {
   background: var(--bg-secondary);

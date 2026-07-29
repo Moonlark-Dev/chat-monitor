@@ -70,8 +70,6 @@ export interface EgoState {
   sleep_begin_time: string | null
   current_activity: string | null
   activity_start_time: string | null
-  decision_history: DecisionHistoryItem[]
-  last_decision_time: string | null
   mood_retention: number
   mood: {
     emotion: string
@@ -79,12 +77,7 @@ export interface EgoState {
     reason: string
   }
   blog_status: Record<string, unknown>
-  proactive_info: Record<string, unknown>
-}
-
-export interface DecisionHistoryItem {
-  time: string
-  action: string
+  plan: string
 }
 
 export interface EgoEvent {
@@ -133,8 +126,6 @@ export interface IncrementalUpdate {
   mood?: MoodData
   sessions_updated?: SessionInfo[]
   sessions_removed?: string[]
-  new_ego_decisions?: DecisionHistoryItem[]
-  ego_decision_full?: DecisionHistoryItem[]
   ego_updates?: Partial<Pick<EgoState, 'sleep_mode' | 'tiredness' | 'current_activity' | 'mood_retention'>>
   ws_connections?: number
 }

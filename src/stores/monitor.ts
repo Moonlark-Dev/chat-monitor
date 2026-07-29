@@ -60,20 +60,6 @@ export const useMonitorStore = defineStore('monitor', () => {
       sessions.value = sessions.value.filter(s => !data.sessions_removed!.includes(s.id))
     }
 
-    // EGO decision updates
-    if (ego.value && data.new_ego_decisions && data.new_ego_decisions.length > 0) {
-      ego.value = {
-        ...ego.value,
-        decision_history: [...ego.value.decision_history, ...data.new_ego_decisions],
-      }
-    }
-    if (ego.value && data.ego_decision_full) {
-      ego.value = {
-        ...ego.value,
-        decision_history: data.ego_decision_full,
-      }
-    }
-
     // EGO field updates
     if (ego.value && data.ego_updates) {
       ego.value = { ...ego.value, ...data.ego_updates }
