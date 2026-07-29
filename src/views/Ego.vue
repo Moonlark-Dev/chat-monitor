@@ -330,8 +330,7 @@ onMounted(() => {
 .diary-keywords {
   font-size: 11px;
   color: var(--accent);
-  background: var(--accent);
-  background-opacity: 0.1;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
   padding: 1px 6px;
   border-radius: 4px;
 }
