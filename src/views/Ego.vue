@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { getEgoStatus, getEgoPlan, getEgoSessionEventList, getEgoDiaries, getEgoBlogs } from '../api/client'
-import type { EgoState, PlanItem, SessionEventItem, DiaryEntry, BlogEntry } from '../types'
+import type { EgoState, PlanItem, SessionEventItem, DiaryEntry, BlogEntry, ProactiveDecisionRecord } from '../types'
 
 const egoStatus = ref<EgoState | null>(null)
+const decisions = ref<ProactiveDecisionRecord[]>([])
 const planItems = ref<PlanItem[]>([])
 const sessionEvents = ref<SessionEventItem[]>([])
 const totalSessionEvents = ref(0)
@@ -27,7 +28,10 @@ async function loadAll() {
       getEgoBlogs(10),
     ])
 
-    if (status.status === 'fulfilled') egoStatus.value = status.value
+    if (status.status === 'fulfilled') {
+      egoStatus.value = status.value
+      decisions.value = [...(status.value.decision_history || [])].reverse()
+    }
     if (plan.status === 'fulfilled') planItems.value = plan.value.items
     if (sessRes.status === 'fulfilled') {
       sessionEvents.value = sessRes.value.events
@@ -64,6 +68,39 @@ function formatDate(iso: string | null): string {
     if (yesterday.toDateString() === d.toDateString()) return `昨天 ${d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
     return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
   } catch { return iso }
+}
+
+function stageLabel(d: ProactiveDecisionRecord): string {
+  const map: Record<string, string> = {
+    sleep_mode: '💤 睡眠模式',
+    tiredness: '😴 困倦度过高',
+    no_candidates: '👥 无候选',
+    decision: d.error ? '❌ LLM 失败' : (d.skip ? '⏭️ 跳过' : '🎯 选择目标'),
+    send: '📨 已发送',
+    error: '❌ 异常',
+  }
+  return map[d.stage] || d.stage
+}
+
+function stageDetail(d: ProactiveDecisionRecord): string {
+  switch (d.stage) {
+    case 'sleep_mode':
+      return 'Moonlark 处于睡眠模式，跳过本次检查'
+    case 'tiredness':
+      return `困倦度 ${(d.tiredness ?? 0).toFixed(2)} ≥ 0.74`
+    case 'no_candidates':
+      return '没有满足条件的候选用户'
+    case 'decision':
+      if (d.error) return d.error
+      if (d.skip) return `跳过（候选 ${d.candidates_count ?? 0} 人：${(d.candidates || []).join('、') || '—'}）`
+      return `目标：${d.target_nickname}，话题：${d.topic}`
+    case 'send':
+      return `→ ${d.target_nickname}：${d.result ?? ''}`
+    case 'error':
+      return d.error || '未知异常'
+    default:
+      return JSON.stringify(d)
+  }
 }
 
 function onClickEvent(event: { content: string }) {
@@ -127,6 +164,19 @@ onMounted(() => {
             {{ Math.ceil((egoStatus.blog_status as any).cooldown_remaining / 60) }} 分钟
           </span>
           <span class="value" v-else>就绪</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 主动私聊决策 -->
+    <div class="ego-section">
+      <h3>🤖 主动私聊决策 ({{ decisions.length }})</h3>
+      <div v-if="decisions.length === 0" class="empty-state">暂无决策记录</div>
+      <div v-else class="decision-list">
+        <div v-for="(d, idx) in decisions" :key="idx" class="decision-item" @click="onClickEvent({ content: JSON.stringify(d, null, 2) })">
+          <div class="decision-time">{{ formatTime(d.time) }}</div>
+          <span class="decision-badge" :class="'stage-' + d.stage">{{ stageLabel(d) }}</span>
+          <div class="decision-detail">{{ stageDetail(d) }}</div>
         </div>
       </div>
     </div>
@@ -274,6 +324,56 @@ onMounted(() => {
 }
 .plan-content {
   color: var(--text-secondary);
+}
+
+/* 主动私聊决策 */
+.decision-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+.decision-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.15s;
+}
+.decision-item:hover {
+  background: var(--bg-hover);
+}
+.decision-time {
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 130px;
+  font-size: 11px;
+}
+.decision-badge {
+  font-size: 11px;
+  white-space: nowrap;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+}
+.decision-badge.stage-sleep_mode { background: rgba(155, 89, 182, 0.15); color: #9b59b6; }
+.decision-badge.stage-tiredness { background: rgba(127, 140, 141, 0.15); color: #7f8c8d; }
+.decision-badge.stage-no_candidates { background: rgba(149, 165, 166, 0.15); color: #95a5a6; }
+.decision-badge.stage-decision { background: rgba(243, 156, 18, 0.15); color: #f39c12; }
+.decision-badge.stage-send { background: rgba(46, 204, 113, 0.15); color: #2ecc71; }
+.decision-badge.stage-error { background: rgba(231, 76, 60, 0.15); color: #e74c3c; }
+.decision-detail {
+  flex: 1;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 群聊事件 */

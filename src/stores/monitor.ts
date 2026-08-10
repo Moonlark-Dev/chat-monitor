@@ -65,6 +65,18 @@ export const useMonitorStore = defineStore('monitor', () => {
       ego.value = { ...ego.value, ...data.ego_updates }
     }
 
+    // EGO 决策历史增量（追加或全量替换）
+    if (ego.value) {
+      if (data.new_ego_decisions && data.new_ego_decisions.length > 0) {
+        ego.value = {
+          ...ego.value,
+          decision_history: [...(ego.value.decision_history || []), ...data.new_ego_decisions],
+        }
+      } else if (data.ego_decision_full) {
+        ego.value = { ...ego.value, decision_history: data.ego_decision_full }
+      }
+    }
+
     // ws_connections
     if (data.ws_connections !== undefined) {
       wsConnections.value = data.ws_connections

@@ -77,6 +77,20 @@ export interface EgoState {
   }
   blog_status: Record<string, unknown>
   plan: string
+  decision_history?: ProactiveDecisionRecord[]
+}
+
+export interface ProactiveDecisionRecord {
+  time: string
+  stage: 'sleep_mode' | 'tiredness' | 'no_candidates' | 'decision' | 'send' | 'error'
+  skip?: boolean
+  target_nickname?: string
+  topic?: string
+  candidates_count?: number
+  candidates?: string[]
+  tiredness?: number
+  result?: string
+  error?: string
 }
 
 export interface EgoEvent {
@@ -178,6 +192,8 @@ export interface IncrementalUpdate {
   sessions_updated?: SessionInfo[]
   sessions_removed?: string[]
   ego_updates?: Partial<Pick<EgoState, 'sleep_mode' | 'tiredness' | 'mood_retention'>>
+  new_ego_decisions?: ProactiveDecisionRecord[]
+  ego_decision_full?: ProactiveDecisionRecord[]
   ws_connections?: number
 }
 
